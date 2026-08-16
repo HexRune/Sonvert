@@ -1,0 +1,67 @@
+## ---------- Visual Studio / .NET ----------
+# 编译产物
+[Bb]in/
+[Oo]bj/
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+
+# VS 用户/工作区文件
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# 发布相关
+[Pp]ublish/
+*.pubxml
+*.pubxml.user
+
+# NuGet
+*.nupkg
+**/packages/*
+!**/packages/build/
+
+# Rider / VS Code（如果以后有人用别的编辑器打开）
+.idea/
+.vscode/
+
+## ---------- Python ----------
+# 虚拟环境
+venv/
+.venv/
+env/
+
+# 缓存/编译产物
+__pycache__/
+*.py[cod]
+*$py.class
+
+# 打包产物（PyInstaller 等）
+build/
+dist/
+*.spec
+
+# 环境变量/本地配置
+.env
+
+## ---------- 模型与大文件 ----------
+# onnx / gguf 模型文件不进仓库，体积太大；下载方式见 README
+*.onnx
+*.gguf
+*.pt
+*.bin
+models/**/*.onnx
+models/**/*.gguf
+
+## ---------- 日志/临时文件 ----------
+*.log
+*.tmp
+*.wav
+!test-assets/**/*.wav
+
+## ---------- 操作系统 ----------
+Thumbs.db
+.DS_Store
