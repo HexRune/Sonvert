@@ -1,0 +1,10 @@
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+pydantic==2.10.4
+
+# core inference deps
+# numpy pinned to match sensevoice-onnx's requirement (no prebuilt wheel for py3.12+)
+numpy==1.24.4
+# onnxruntime intentionally NOT pinned here - sensevoice-onnx==1.1.0 hard-pins
+# onnxruntime==1.18.0 itself, pinning it again here caused a version conflict
+sensevoice-onnx==1.1.0
