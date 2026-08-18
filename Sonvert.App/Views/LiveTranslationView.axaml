@@ -1,0 +1,62 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Sonvert.App.ViewModels"
+             xmlns:models="using:Sonvert.App.Models"
+             xmlns:conv="using:Avalonia.Data.Converters"
+             x:Class="Sonvert.App.Views.LiveTranslationView"
+             x:DataType="vm:LiveTranslationViewModel">
+
+  <Grid RowDefinitions="Auto,Auto,*" Margin="24">
+
+    <!-- 开始/停止按钮，按钮文字和是否可点击跟着 IsRunning 状态变 -->
+    <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="12">
+      <Button Content="开始识别"
+              Command="{Binding StartCommand}"
+              IsVisible="{Binding !IsRunning}"
+              Background="{StaticResource AccentBrush}"
+              Foreground="{StaticResource TextPrimaryBrush}"
+              Padding="20,8" CornerRadius="6" />
+      <Button Content="停止"
+              Command="{Binding StopCommand}"
+              IsVisible="{Binding IsRunning}"
+              Background="{StaticResource DangerBrush}"
+              Foreground="{StaticResource TextPrimaryBrush}"
+              Padding="20,8" CornerRadius="6" />
+    </StackPanel>
+
+    <!-- 出错时显示具体错误信息，方便联调阶段直接看到失败原因 -->
+    <TextBlock Grid.Row="1"
+               Text="{Binding ErrorMessage}"
+               IsVisible="{Binding ErrorMessage, Converter={x:Static conv:StringConverters.IsNotNullOrEmpty}}"
+               Foreground="{StaticResource DangerBrush}"
+               Margin="0,12,0,0"
+               TextWrapping="Wrap" />
+
+    <!-- 识别结果列表：只做最基础的展示，原文 + 情绪/事件标签，
+         样式先不管，等链路验证通过再回头美化 -->
+    <ScrollViewer Grid.Row="2" Margin="0,16,0,0">
+      <ItemsControl ItemsSource="{Binding Results}">
+        <ItemsControl.ItemTemplate>
+          <DataTemplate x:DataType="models:RecognitionResultItem">
+            <Border BorderBrush="{StaticResource CardBorderBrush}"
+                    BorderThickness="0,0,0,1"
+                    Padding="0,12">
+              <StackPanel Orientation="Horizontal" Spacing="12">
+                <TextBlock Text="{Binding Text}"
+                           Foreground="{StaticResource TextPrimaryBrush}"
+                           FontSize="15" />
+                <TextBlock Text="{Binding Emotion}"
+                           Foreground="{StaticResource TextSecondaryBrush}"
+                           FontSize="12" />
+                <TextBlock Text="{Binding Event}"
+                           Foreground="{StaticResource TextSecondaryBrush}"
+                           FontSize="12" />
+              </StackPanel>
+            </Border>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+    </ScrollViewer>
+
+  </Grid>
+</UserControl>
