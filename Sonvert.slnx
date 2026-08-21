@@ -1,5 +1,8 @@
 <Solution>
   <Project Path="Sonvert.App/Sonvert.App.csproj" Id="f2324b54-8920-42b8-87b2-680a1c33053b" />
+  <Project Path="Sonvert.MTService/Sonvert.MTService.pyproj" Type="888888a0-9f3d-457c-b088-3a5042f75d52" Id="8ebb5bb0-6c46-4bf4-8b27-ddd116845d2c">
+    <Build Project="false" />
+  </Project>
   <Project Path="Sonvert.SenseVoiceService/Sonvert.SenseVoiceService.pyproj" Type="888888a0-9f3d-457c-b088-3a5042f75d52" Id="bdd12360-2633-48df-8d6f-97d07b19f862">
     <Build Project="false" />
   </Project>

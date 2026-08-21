@@ -49,7 +49,13 @@ dist/
 
 ## ---------- 模型与大文件 ----------
 # onnx / gguf 模型文件不进仓库，体积太大；下载方式见 README
+Sonvert.MTService/models/
+Sonvert.TTSService*/models/
+GPT-SoVITS*/pretrained_models/
+*.pth
+*.ckpt
 *.onnx
+*.onnx_data
 *.gguf
 *.pt
 *.bin
@@ -60,8 +66,10 @@ models/**/*.gguf
 *.log
 *.tmp
 *.wav
+*.flac
 !test-assets/**/*.wav
 
 ## ---------- 操作系统 ----------
 Thumbs.db
 .DS_Store
+/GPT-SoVITS-v3lora-20250228

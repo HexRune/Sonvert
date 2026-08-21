@@ -28,6 +28,7 @@ namespace Sonvert.App.Services.Recognition;
 public class RecognitionResultEventArgs : EventArgs
 {
     public string Text { get; init; } = "";
+    public string? Language { get; init; }
     public string? Emotion { get; init; }
     public string? Event { get; init; }
     public float[] AudioSamples { get; init; } = Array.Empty<float>();
@@ -206,6 +207,7 @@ public class RecognitionSessionService : IRecognitionSessionService
                     ResultReceived?.Invoke(this, new RecognitionResultEventArgs
                     {
                         Text = result.Text,
+                        Language = result.Language,
                         Emotion = result.Emotion,
                         Event = result.Event,
                         AudioSamples = samples,

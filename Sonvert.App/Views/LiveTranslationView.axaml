@@ -51,6 +51,11 @@
                 <TextBlock Text="{Binding Event}"
                            Foreground="{StaticResource TextSecondaryBrush}"
                            FontSize="12" />
+                <TextBlock Text="{Binding TranslatedText}"
+                           Foreground="{StaticResource TextPrimaryBrush}"
+                           FontSize="15"
+                           FontStyle="Italic"
+                           TextWrapping="Wrap" />
               </StackPanel>
             </Border>
           </DataTemplate>

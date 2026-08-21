@@ -1,14 +1,17 @@
-using System;
-using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 using Microsoft.Extensions.DependencyInjection;
+using Sonvert.App.Services.Audio;
 using Sonvert.App.Services.Recognition;
 using Sonvert.App.Services.SenseVoice;
+using Sonvert.App.Services.Translation;
+using Sonvert.App.Services.Tts;
 using Sonvert.App.Settings;
 using Sonvert.App.ViewModels;
 using Sonvert.App.Views;
+using System;
+using System.Threading.Tasks;
 
 namespace Sonvert.App;
 
@@ -77,6 +80,16 @@ public partial class App : Application
 
         services.AddSingleton<LiveTranslationViewModel>();
         services.AddSingleton<MainViewModel>();
+        // translation services
+        services.AddSingleton<LocalTranslationService>();
+        services.AddSingleton<ApiTranslationService>();
+        services.AddSingleton<ITranslationService, TranslationRouter>();
+        // tts services
+        services.AddSingleton<LocalTtsService>();
+        services.AddSingleton<ApiTtsService>();
+        services.AddSingleton<ITtsService, TtsRouter>();
+        // audio playback service
+        services.AddSingleton<IAudioPlaybackService, NAudioPlaybackService>();
     }
 
     private async Task CleanupAsync()
@@ -92,5 +105,12 @@ public partial class App : Application
 
         var senseVoiceService = Services.GetRequiredService<ISenseVoiceService>();
         await senseVoiceService.StopAsync();
+
+        // 最后停翻译服务（如果它在后台有任务的话），因为翻译服务可能还在等识别结果，
+        var translationService = Services.GetRequiredService<ITranslationService>();
+        await translationService.StopAsync();
+        // 最后停 TTS 服务（如果它在后台有任务的话），因为 TTS 服务可能还在等翻译结果，
+        var ttsService = Services.GetRequiredService<ITtsService>();
+        await ttsService.StopAsync();
     }
 }

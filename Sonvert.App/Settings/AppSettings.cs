@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 
 namespace Sonvert.App.Settings;
@@ -84,4 +85,81 @@ public class AppSettings
 
     private static string DefaultDevExecutablePath() =>
         Path.Combine(DefaultDevWorkingDirectory(), @"env\Scripts\python.exe");
+
+    // ---- MTService（新的 Python 子进程，翻译用）----
+    public int MTPort { get; set; } = 8879;
+
+    public string MTExecutablePath { get; set; } = DefaultDevMTExecutablePath();
+
+    public string MTArguments { get; set; } = "main.py";
+
+    public string MTWorkingDirectory { get; set; } = DefaultDevMTWorkingDirectory();
+
+    // ---- 翻译提供方选择：本地模型 or 第三方 API ----
+    // "local" | "api"。目前 "api" 分支还没实现（ApiTranslationService 会直接
+    // 抛异常），先占好设置位，等接入时不需要再改设置结构。
+    public string TranslationProvider { get; set; } = "local";
+
+    /// <summary>第三方翻译/大模型 API 的请求地址，预留，暂未使用。</summary>
+    public string TranslationApiEndpoint { get; set; } = string.Empty;
+
+    /// <summary>第三方 API 的密钥，预留，暂未使用。</summary>
+    public string TranslationApiKey { get; set; } = string.Empty;
+
+    /// <summary>第三方 API 用的模型名（比如 "gpt-4o-mini"、"qwen-mt-turbo"），预留，暂未使用。</summary>
+    public string TranslationApiModel { get; set; } = string.Empty;
+
+    private static string DefaultDevMTWorkingDirectory() => Path.GetFullPath(
+        Path.Combine(AppContext.BaseDirectory, @"..\..\..\..\Sonvert.MTService"));
+
+    private static string DefaultDevMTExecutablePath() =>
+        Path.Combine(DefaultDevMTWorkingDirectory(), @"env\Scripts\python.exe");
+
+    // ---- TTSService（GPT-SoVITS 官方 api_v2.py，语音合成用）----
+
+    /// <summary>
+    /// GPT-SoVITS api_v2.py 监听的本地端口，默认值跟它自己的默认端口一致。
+    /// </summary>
+    public int TTSPort { get; set; } = 9880;
+
+    /// <summary>
+    /// 要执行的程序：开发期指向 GPT-SoVITS 整合包里的 runtime\python.exe。
+    /// 跟 SenseVoice/MT 那两个不一样——这个不是我们自己的 venv，是官方
+    /// 整合包自带的独立运行时，路径需要指到那个整合包的解压目录里。
+    /// </summary>
+    public string TTSExecutablePath { get; set; } = "D:/code/Sonvert/GPT-SoVITS-v3lora-20250228/runtime/python.exe";
+
+    public string TTSArguments { get; set; } =
+        "api_v2.py -a 127.0.0.1 -p 9880 -c GPT_SoVITS/configs/tts_infer.yaml";
+
+    /// <summary>GPT-SoVITS 整合包的根目录（解压后的那个文件夹）。</summary>
+    public string TTSWorkingDirectory { get; set; } = "D:/code/Sonvert/GPT-SoVITS-v3lora-20250228";
+
+    /// <summary>
+    /// 按情绪分类的参考音频。key 是情绪标签，直接复用 SenseVoice 输出的
+    /// 那套（NEUTRAL/HAPPY/ANGRY/SAD 等）。NEUTRAL 这一项必须配置，
+    /// 找不到对应情绪的参考音频时会退回用它兜底。
+    /// </summary>
+    public Dictionary<string, TtsReferenceClip> TTSReferenceAudioByEmotion { get; set; } = new()
+    {
+        ["NEUTRAL"] = new TtsReferenceClip(),
+    };
+
+    public class TtsReferenceClip
+    {
+        /// <summary>参考音频文件路径，必须是干净录音——不能是剪辑/转码过的素材，
+        /// 之前实测过背景音乐/混响会导致合成内容错乱，参见 Sonvert.TTSService 排查记录。</summary>
+        public string AudioPath { get; set; } = "D:\\code\\Sonvert\\ReferenceAudio.wav";
+
+        /// <summary>参考音频里实际说的内容，逐字对应。</summary>
+        public string PromptText { get; set; } = "来，家人们看过来！今天这款产品我敢说，你错过了一定会后悔。";
+    }
+
+    public string TTSReferenceAudioLanguage { get; set; } = "zh";
+
+    // ---- TTS 提供方选择：本地模型 or 第三方 API，跟 MT 那边设计对称 ----
+    public string TTSProvider { get; set; } = "local"; // "local" | "api"
+    public string TTSApiEndpoint { get; set; } = string.Empty;
+    public string TTSApiKey { get; set; } = string.Empty;
+    public string TTSApiModel { get; set; } = string.Empty;
 }

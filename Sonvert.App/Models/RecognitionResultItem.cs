@@ -1,14 +1,18 @@
+using CommunityToolkit.Mvvm.ComponentModel;
+
 namespace Sonvert.App.Models;
 
 /// <summary>
-/// 界面上展示用的一条识别结果，从 RecognitionResultEventArgs 转换而来。
-/// 单独建这个类而不是直接用 RecognitionResultEventArgs 绑定到界面，
-/// 是因为 EventArgs 语义上是"一次性的事件参数"，不适合长期持有在
-/// ObservableCollection 里给界面反复渲染，分开是更清楚的做法。
+/// 界面上展示用的一条识别结果。Text/Emotion/Event 识别完成时就确定了，
+/// 用 init-only；TranslatedText 是识别完成后异步补上的，所以做成
+/// ObservableProperty——翻译结果回来时更新它，界面能自动刷新。
 /// </summary>
-public class RecognitionResultItem
+public partial class RecognitionResultItem : ObservableObject
 {
     public required string Text { get; init; }
     public string? Emotion { get; init; }
     public string? Event { get; init; }
+
+    [ObservableProperty]
+    private string? _translatedText;
 }

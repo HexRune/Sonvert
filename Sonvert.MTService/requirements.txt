@@ -1,0 +1,10 @@
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+pydantic==2.10.4
+
+# MT 推理
+optimum[onnxruntime]==1.23.3
+transformers==4.46.3
+sentencepiece==0.2.0
+sacremoses==0.1.1
+torch==2.5.1
