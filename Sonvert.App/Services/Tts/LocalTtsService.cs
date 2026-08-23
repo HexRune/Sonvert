@@ -1,5 +1,4 @@
-﻿using Sonvert.App.Settings;
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -7,23 +6,22 @@ using System.Net.Http;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Threading.Tasks;
+using Sonvert.App.Services.Characters;
+using Sonvert.App.Settings;
 
 namespace Sonvert.App.Services.Tts;
 
-/// <summary>
-/// ITtsService 的本地实现：拉起 GPT-SoVITS 官方 api_v2.py 作为子进程，
-/// 通过 HTTP 调用它的 /tts 接口。生命周期管理模式跟 SenseVoiceService/
-/// LocalTranslationService 一致（启动子进程 -> 探测就绪 -> 调接口 -> 关闭）。
-/// </summary>
 public class LocalTtsService : ITtsService, IAsyncDisposable
 {
     private readonly ISettingsService _settingsService;
+    private readonly ICharacterRepository _characterRepository;
     private readonly HttpClient _httpClient;
     private Process? _process;
 
-    public LocalTtsService(ISettingsService settingsService)
+    public LocalTtsService(ISettingsService settingsService, ICharacterRepository characterRepository)
     {
         _settingsService = settingsService;
+        _characterRepository = characterRepository;
         _httpClient = new HttpClient
         {
             BaseAddress = new Uri($"http://127.0.0.1:{_settingsService.Current.TTSPort}"),
@@ -73,7 +71,7 @@ public class LocalTtsService : ITtsService, IAsyncDisposable
         };
         _process.ErrorDataReceived += (_, e) =>
         {
-            if (e.Data != null) Debug.WriteLine($"[TTSService] {e.Data}"); // GPT-SoVITS 的正常日志走 stderr，不额外标 :ERR，避免误导
+            if (e.Data != null) Debug.WriteLine($"[TTSService] {e.Data}");
         };
 
         _process.Start();
@@ -85,7 +83,6 @@ public class LocalTtsService : ITtsService, IAsyncDisposable
 
     private async Task WaitUntilHealthyAsync()
     {
-        // api_v2.py 没有单独的 /health 接口，用 FastAPI 自带的 /docs 页面探测。
         const int maxAttempts = 40;
         const int delayMs = 500;
 
@@ -98,7 +95,7 @@ public class LocalTtsService : ITtsService, IAsyncDisposable
             }
             catch (HttpRequestException)
             {
-                // 进程可能还没起来，忽略，继续重试。
+                // 忽略，继续重试。
             }
 
             await Task.Delay(delayMs);
@@ -108,56 +105,91 @@ public class LocalTtsService : ITtsService, IAsyncDisposable
             $"GPT-SoVITS 服务启动超时（等待 {maxAttempts * delayMs / 1000} 秒仍未就绪）");
     }
 
-    public async Task<TtsResult> SynthesizeAsync(string text, string language, string emotion)
+    private async Task<TtsResult> SynthesizeOnceAsync(
+    string text, string language, string audioPath, string promptText, string promptLang)
     {
-        var settings = _settingsService.Current;
-        var byEmotion = settings.TTSReferenceAudioByEmotion;
-
-        if (!byEmotion.TryGetValue(emotion, out var clip) || string.IsNullOrWhiteSpace(clip.AudioPath))
-        {
-            // 没为这个情绪单独配参考音频，退回中性，不直接报错——
-            // 让合成正常继续比因为缺一个情绪标签就中断整条流水线更重要。
-            if (!byEmotion.TryGetValue("NEUTRAL", out clip) || string.IsNullOrWhiteSpace(clip.AudioPath))
-            {
-                throw new InvalidOperationException(
-                    "还没配置任何参考音频（至少要配置 NEUTRAL），先在设置里选一段主播的语音样本");
-            }
-        }
-
         var requestBody = new Dictionary<string, object>
         {
             ["text"] = text,
             ["text_lang"] = language,
-            ["ref_audio_path"] = clip.AudioPath,
-            ["prompt_text"] = clip.PromptText,
-            ["prompt_lang"] = settings.TTSReferenceAudioLanguage,
+            ["ref_audio_path"] = audioPath,
+            ["prompt_text"] = promptText,
+            ["prompt_lang"] = promptLang,
             ["media_type"] = "wav",
             ["streaming_mode"] = false,
+            ["seed"] = -1, // -1 表示每次随机取样,配合重试机制，让重试时有机会抽到不同结果，
+                           // 而不是每次都用同一个随机种子导致重试也复现同样的失败
         };
 
         var response = await _httpClient.PostAsJsonAsync("/tts", requestBody);
 
         if (!response.IsSuccessStatusCode)
         {
-            string errorMessage;
-            try
-            {
-                using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-                errorMessage = doc.RootElement.TryGetProperty("message", out var msg)
-                    ? msg.GetString() ?? "(未知错误)"
-                    : "(未知错误，响应体解析失败)";
-            }
-            catch (JsonException)
-            {
-                errorMessage = await response.Content.ReadAsStringAsync();
-            }
-
-            throw new InvalidOperationException(
-                $"TTS 合成失败: [{(int)response.StatusCode}] {errorMessage}");
+            var rawBody = await response.Content.ReadAsStringAsync();
+            throw new InvalidOperationException($"TTS 合成失败: [{(int)response.StatusCode}] {rawBody}");
         }
 
         var audioData = await response.Content.ReadAsByteArrayAsync();
         return new TtsResult { AudioData = audioData, MediaType = "wav" };
+    }
+    public async Task<TtsResult> SynthesizeAsync(string text, string language, string emotion)
+    {
+        var settings = _settingsService.Current;
+
+        if (settings.ActiveCharacterId is not { } characterId)
+        {
+            throw new InvalidOperationException("还没选择角色，先在首页选一个角色再开始翻译");
+        }
+
+        var resolvedClip = await _characterRepository.ResolveClipAsync(characterId, emotion);
+        if (resolvedClip is null)
+        {
+            throw new InvalidOperationException(
+                $"角色 {characterId} 还没有任何参考音频（至少要录制 NEUTRAL），先去\"声音克隆\"页面录一段");
+        }
+
+        const int maxAttempts = 3;
+        TtsResult? lastResult = null;
+
+        for (var attempt = 1; attempt <= maxAttempts; attempt++)
+        {
+            var result = await SynthesizeOnceAsync(
+                text, language, resolvedClip.AudioPath, resolvedClip.PromptText,
+                settings.TTSReferenceAudioLanguage);
+
+            lastResult = result;
+
+            if (!IsAudioSuspiciouslyShort(result.AudioData, text))
+            {
+                return result; // 时长正常，直接用这次的结果
+            }
+
+            System.Diagnostics.Debug.WriteLine(
+                $"[TTS] 第 {attempt} 次合成结果时长异常偏短（疑似提前截断），重试...");
+        }
+
+        // 重试次数用完还是异常，只能用最后一次的结果——总比完全没有声音要好，
+        // 这种情况在调试阶段应该很少见（3 次都撞上概率性失败的可能性很低）。
+        return lastResult!;
+    }
+
+    /// <summary>
+    /// 粗略判断：正常语速下每个字符大致对应的最短时长（留了较宽松的余量，
+    /// 避免把语速偏快的正常结果也误判成异常）。这不是精确公式，只是用来
+    /// 兜底识别"明显被提前截断"这种数量级的异常，不需要特别精确。
+    /// </summary>
+    private static bool IsAudioSuspiciouslyShort(byte[] wavBytes, string text)
+    {
+        var duration = GetWavDurationSeconds(wavBytes);
+        var minExpectedDuration = text.Length * 0.06; // 每字符至少 60ms，比正常语速快很多，留足余量
+        return duration < minExpectedDuration;
+    }
+
+    private static double GetWavDurationSeconds(byte[] wavBytes)
+    {
+        using var stream = new System.IO.MemoryStream(wavBytes);
+        using var reader = new NAudio.Wave.WaveFileReader(stream);
+        return reader.TotalTime.TotalSeconds;
     }
 
     public async Task StopAsync()
@@ -167,7 +199,6 @@ public class LocalTtsService : ITtsService, IAsyncDisposable
             return;
         }
 
-        // api_v2.py 没有 /shutdown 接口，直接杀进程（连带杀掉它可能起的子进程）。
         try
         {
             _process.Kill(entireProcessTree: true);

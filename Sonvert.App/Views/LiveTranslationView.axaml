@@ -16,12 +16,6 @@
               Background="{StaticResource AccentBrush}"
               Foreground="{StaticResource TextPrimaryBrush}"
               Padding="20,8" CornerRadius="6" />
-      <Button Content="停止"
-              Command="{Binding StopCommand}"
-              IsVisible="{Binding IsRunning}"
-              Background="{StaticResource DangerBrush}"
-              Foreground="{StaticResource TextPrimaryBrush}"
-              Padding="20,8" CornerRadius="6" />
     </StackPanel>
 
     <!-- 出错时显示具体错误信息，方便联调阶段直接看到失败原因 -->

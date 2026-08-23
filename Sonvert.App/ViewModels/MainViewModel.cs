@@ -1,8 +1,11 @@
-using System.Collections.ObjectModel;
-using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Sonvert.App.Models;
+using Sonvert.App.ViewModels;
+using System;
+using System.Collections.ObjectModel;
+using System.Linq;
+using System.Threading.Tasks;
 
 namespace Sonvert.App.ViewModels;
 
@@ -15,6 +18,11 @@ namespace Sonvert.App.ViewModels;
 public partial class MainViewModel : ViewModelBase
 {
     private readonly LiveTranslationViewModel _liveTranslationViewModel;
+    private readonly SettingsViewModel _settingsViewModel;
+    private readonly HomeViewModel _homeViewModel;
+    private readonly VoiceCloningViewModel _voiceCloningViewModel;
+
+    private readonly HistoryViewModel _historyViewModel;
 
     public ObservableCollection<NavItem> NavItems { get; } = new()
     {
@@ -47,9 +55,18 @@ public partial class MainViewModel : ViewModelBase
     /// </summary>
     public bool IsSessionActive => _liveTranslationViewModel.IsRunning;
 
-    public MainViewModel(LiveTranslationViewModel liveTranslationViewModel)
+    public MainViewModel(LiveTranslationViewModel liveTranslationViewModel,
+        SettingsViewModel settingsViewModel,
+        HomeViewModel homeViewModel,
+        VoiceCloningViewModel voiceCloningViewModel,
+        HistoryViewModel historyViewModel)
     {
         _liveTranslationViewModel = liveTranslationViewModel;
+        _settingsViewModel = settingsViewModel;
+        _homeViewModel = homeViewModel;
+        _voiceCloningViewModel = voiceCloningViewModel;
+
+        _homeViewModel.StartTranslationRequested += OnStartTranslationRequested;
 
         // LiveTranslationViewModel.IsRunning 变化时，通知 IsSessionActive
         // 也跟着刷新（IsSessionActive 是计算属性，没有自己的 [ObservableProperty]
@@ -64,6 +81,16 @@ public partial class MainViewModel : ViewModelBase
         };
 
         SelectedNavItem = NavItems[0];
+        _historyViewModel = historyViewModel;
+    }
+
+    private async void OnStartTranslationRequested(object? sender, EventArgs e)
+    {
+        // 切换到"实时翻译"这个导航项——这一行会触发 OnSelectedNavItemChanged，
+        // 自动把 CurrentPage 切成 _liveTranslationViewModel。
+        SelectedNavItem = NavItems.First(item => item.Title == "实时翻译");
+
+        await _liveTranslationViewModel.StartCommand.ExecuteAsync(null);
     }
 
     // [ObservableProperty] 生成的 partial 方法钩子：SelectedNavItem 变化时
@@ -73,9 +100,23 @@ public partial class MainViewModel : ViewModelBase
     {
         CurrentPage = value?.Title switch
         {
+            "主页" => RefreshAndGetHomeViewModel(),
+            "设置" => _settingsViewModel,
             "实时翻译" => _liveTranslationViewModel,
+            "声音克隆" => _voiceCloningViewModel,
+            "历史记录" => RefreshAndGetHistoryViewModel(),
             _ => null, // 其他页面还没搭，先显示占位
         };
+    }
+    private HistoryViewModel RefreshAndGetHistoryViewModel()
+    {
+        _ = _historyViewModel.RefreshAsync();
+        return _historyViewModel;
+    }
+    private HomeViewModel RefreshAndGetHomeViewModel()
+    {
+        _ = _homeViewModel.RefreshCharactersAsync();
+        return _homeViewModel;
     }
 
     /// <summary>

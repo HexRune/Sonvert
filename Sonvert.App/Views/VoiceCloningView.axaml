@@ -1,0 +1,95 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Sonvert.App.ViewModels"
+             xmlns:models="using:Sonvert.App.Models"
+             x:Class="Sonvert.App.Views.VoiceCloningView"
+             x:DataType="vm:VoiceCloningViewModel">
+
+  <UserControl.Styles>
+    <Style Selector="Border.Card">
+      <Setter Property="BorderBrush" Value="{StaticResource CardBorderBrush}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="10" />
+      <Setter Property="Padding" Value="16" />
+      <Setter Property="Margin" Value="0,0,0,12" />
+    </Style>
+    <Style Selector="TextBox">
+      <Setter Property="Background" Value="{StaticResource BackgroundBrush}" />
+      <Setter Property="BorderBrush" Value="{StaticResource CardBorderBrush}" />
+      <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+      <Setter Property="CornerRadius" Value="6" />
+    </Style>
+  </UserControl.Styles>
+
+  <Grid ColumnDefinitions="240,*" Margin="24">
+
+    <!-- 左侧：角色列表 -->
+    <StackPanel Grid.Column="0" Margin="0,0,16,0" Spacing="8">
+      <TextBlock Text="角色" FontSize="18" FontWeight="Bold"
+                 Foreground="{StaticResource TextPrimaryBrush}" />
+
+      <TextBox Text="{Binding NewCharacterName}" Watermark="新角色名称" />
+      <Button Content="创建角色" Command="{Binding CreateCharacterCommand}"
+              Background="{StaticResource AccentBrush}"
+              Foreground="{StaticResource BackgroundBrush}"
+              HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" />
+
+      <ListBox ItemsSource="{Binding Characters}"
+               SelectedItem="{Binding SelectedCharacter}">
+        <ListBox.ItemTemplate>
+          <DataTemplate x:DataType="models:Character">
+            <TextBlock Text="{Binding Name}" Padding="4" />
+          </DataTemplate>
+        </ListBox.ItemTemplate>
+      </ListBox>
+    </StackPanel>
+
+    <!-- 右侧：选中角色的情绪录音槽位 -->
+    <ScrollViewer Grid.Column="1">
+      <StackPanel Spacing="0">
+        <TextBlock Text="情绪参考音频" FontSize="18" FontWeight="Bold"
+                   Foreground="{StaticResource TextPrimaryBrush}" Margin="0,0,0,12" />
+
+        <ItemsControl ItemsSource="{Binding EmotionSlots}">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="vm:EmotionSlotViewModel">
+              <Border Classes="Card">
+                <StackPanel Spacing="8">
+                  <Grid ColumnDefinitions="*,Auto">
+                    <TextBlock Grid.Column="0" Text="{Binding Emotion}"
+                               FontWeight="SemiBold"
+                               Foreground="{StaticResource TextPrimaryBrush}" />
+                    <TextBlock Grid.Column="1"
+                               Text="{Binding IsRecorded, StringFormat='已录制: {0}'}"
+                               Foreground="{StaticResource TextSecondaryBrush}" FontSize="12" />
+                  </Grid>
+
+                  <TextBox Text="{Binding ScriptText}" AcceptsReturn="True"
+                           TextWrapping="Wrap" Height="60" />
+
+                  <StackPanel Orientation="Horizontal" Spacing="8">
+                    <Button Content="{Binding IsRecording, StringFormat='{}{0}'}"
+                            Command="{Binding ToggleRecordingCommand}"
+                            Background="{StaticResource DangerBrush}"
+                            Foreground="{StaticResource TextPrimaryBrush}"
+                            Padding="14,6" CornerRadius="6" />
+                    <Button Content="试听" Command="{Binding PlayPendingCommand}"
+                            IsEnabled="{Binding CanPreview}"
+                            Background="{StaticResource NavItemHoverBrush}"
+                            Foreground="{StaticResource TextPrimaryBrush}"
+                            Padding="14,6" CornerRadius="6" />
+                    <Button Content="保存" Command="{Binding SaveCommand}"
+                            IsEnabled="{Binding HasPendingAudio}"
+                            Background="{StaticResource AccentBrush}"
+                            Foreground="{StaticResource BackgroundBrush}"
+                            Padding="14,6" CornerRadius="6" />
+                  </StackPanel>
+                </StackPanel>
+              </Border>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </StackPanel>
+    </ScrollViewer>
+  </Grid>
+</UserControl>

@@ -200,7 +200,7 @@ public class RecognitionSessionService : IRecognitionSessionService
                 // Python 端测试脚本里的转换逻辑保持一致（四舍五入，不是
                 // 直接截断，避免引入量化偏差）。
                 var pcmBytes = ToPcm16Bytes(samples);
-                var result = await _senseVoiceService.RecognizeAsync(pcmBytes);
+                var result = await _senseVoiceService.RecognizeAsync(pcmBytes, _settingsService.Current.RecognitionLanguage);
 
                 if (!string.IsNullOrEmpty(result.Text))
                 {

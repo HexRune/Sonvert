@@ -73,3 +73,5 @@ models/**/*.gguf
 Thumbs.db
 .DS_Store
 /GPT-SoVITS-v3lora-20250228
+
+*.db
