@@ -2,6 +2,7 @@
 using CommunityToolkit.Mvvm.Input;
 using Sonvert.App.Models;
 using Sonvert.App.Services.SenseVoice;
+using Sonvert.App.Services.Translation;
 using Sonvert.App.Settings;
 using System.Collections.ObjectModel;
 using System.Threading.Tasks;
@@ -54,9 +55,10 @@ public partial class SettingsViewModel : ViewModelBase
     [ObservableProperty]
     private string? _saveStatusMessage;
 
-    public SettingsViewModel(ISettingsService settingsService)
+    public SettingsViewModel(ISettingsService settingsService, IGlossaryRepository glossaryRepository)
     {
         _settingsService = settingsService;
+        _glossaryRepository = glossaryRepository;
         LoadFromSettings();
     }
 
@@ -166,5 +168,43 @@ public partial class SettingsViewModel : ViewModelBase
         // 端口/路径这类设置要重启程序才会在下次启动子进程时生效，
         // 这里明确提示一下，避免用户改完以为立刻生效了。
         SaveStatusMessage = "已保存，重启程序后生效";
+    }
+    // 关键词替换
+    private readonly IGlossaryRepository _glossaryRepository;
+
+    public ObservableCollection<GlossaryEntry> GlossaryEntries { get; } = new();
+
+    [ObservableProperty]
+    private string _newGlossarySourceTerm = string.Empty;
+
+    [ObservableProperty]
+    private string _newGlossaryTargetTerm = string.Empty;
+
+    private async Task LoadGlossaryAsync()
+    {
+        GlossaryEntries.Clear();
+        foreach (var entry in await _glossaryRepository.GetAllAsync())
+        {
+            GlossaryEntries.Add(entry);
+        }
+    }
+
+    [RelayCommand]
+    private async Task AddGlossaryEntryAsync()
+    {
+        if (string.IsNullOrWhiteSpace(NewGlossarySourceTerm) || string.IsNullOrWhiteSpace(NewGlossaryTargetTerm))
+            return;
+
+        await _glossaryRepository.AddAsync(NewGlossarySourceTerm, NewGlossaryTargetTerm);
+        NewGlossarySourceTerm = string.Empty;
+        NewGlossaryTargetTerm = string.Empty;
+        await LoadGlossaryAsync();
+    }
+
+    [RelayCommand]
+    private async Task DeleteGlossaryEntryAsync(GlossaryEntry entry)
+    {
+        await _glossaryRepository.DeleteAsync(entry.Id);
+        GlossaryEntries.Remove(entry);
     }
 }

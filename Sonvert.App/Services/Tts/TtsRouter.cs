@@ -23,6 +23,6 @@ public class TtsRouter : ITtsService
 
     public Task<TtsResult> SynthesizeAsync(string text, string language, string emotion)
         => Active.SynthesizeAsync(text, language, emotion);
-
+    public Task PrewarmReferenceAudioAsync(int characterId) => Active.PrewarmReferenceAudioAsync(characterId);
     public Task StopAsync() => Active.StopAsync();
 }

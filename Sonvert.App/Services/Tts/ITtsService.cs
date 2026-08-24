@@ -10,11 +10,14 @@ public interface ITtsService
 {
     Task StartAsync();
 
-    /// <summary>
-    /// 合成一段文本对应的语音。emotion 用于查找对应的参考音频
-    /// （NEUTRAL/HAPPY/ANGRY 等，直接传 SenseVoice 识别出的标签即可），
-    /// 找不到对应情绪的参考音频时自动退回 NEUTRAL。
-    /// </summary>
+    /// <summary>预热：把指定角色已经录制过的所有情绪参考音频，提前提交给
+    /// GPT-SoVITS 做一次特征提取（调用它的 /set_refer_audio 接口）。
+    /// 这一步能不能真正加速后续合成还没有 100% 确认（GPT-SoVITS 官方
+    /// 没有明确文档说明 /tts 请求会不会复用这次预热的结果），实现这个方法
+    /// 是为了实测验证——调用方应该在开始识别前调一次，然后对比第一次真实
+    /// 合成的耗时跟之前的数据，看是否有实质性改善。</summary>
+    Task PrewarmReferenceAudioAsync(int characterId);
+
     Task<TtsResult> SynthesizeAsync(string text, string language, string emotion);
 
     Task StopAsync();

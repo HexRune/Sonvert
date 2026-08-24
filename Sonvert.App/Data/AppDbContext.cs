@@ -23,6 +23,7 @@ public class AppDbContext : DbContext
     public DbSet<Character> Characters => Set<Character>();
     public DbSet<CharacterEmotionClip> CharacterEmotionClips => Set<CharacterEmotionClip>();
     public DbSet<HistoryEntry> HistoryEntries => Set<HistoryEntry>();
+    public DbSet<GlossaryEntry> GlossaryEntries => Set<GlossaryEntry>();
 
     public static string AppDataRoot { get; } = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Sonvert");

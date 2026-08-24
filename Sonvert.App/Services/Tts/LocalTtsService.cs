@@ -217,4 +217,37 @@ public class LocalTtsService : ITtsService, IAsyncDisposable
         await StopAsync();
         _httpClient.Dispose();
     }
+
+    public async Task PrewarmReferenceAudioAsync(int characterId)
+    {
+        var character = await _characterRepository.GetByIdAsync(characterId);
+        if (character is null) return;
+
+        // 逐个调用 /set_refer_audio，不用并发——GPT-SoVITS 底层是单线程串行
+        // 处理推理请求的，并发调用这类"设置状态"的接口意义不大，反而可能
+        // 因为请求顺序不确定导致最后生效的是哪一份参考音频变得不可预测。
+        foreach (var clip in character.EmotionClips)
+        {
+            var absolutePath = Path.Combine(Data.AppDbContext.AppDataRoot, clip.RelativeAudioPath);
+            if (!File.Exists(absolutePath)) continue;
+
+            try
+            {
+                var url = $"/set_refer_audio?refer_audio_path={Uri.EscapeDataString(absolutePath)}";
+                var response = await _httpClient.GetAsync(url);
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    var body = await response.Content.ReadAsStringAsync();
+                    Debug.WriteLine($"[TTS预热] 情绪 {clip.Emotion} 预热失败: [{(int)response.StatusCode}] {body}");
+                }
+            }
+            catch (Exception ex)
+            {
+                // 预热失败不应该阻止整个会话启动——最坏情况就是退回"没预热"的
+                // 状态，第一次合成会稍微慢一点，不影响功能正确性。
+                Debug.WriteLine($"[TTS预热] 情绪 {clip.Emotion} 预热请求异常: {ex.Message}");
+            }
+        }
+    }
 }

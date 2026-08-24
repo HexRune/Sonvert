@@ -20,6 +20,6 @@ public class ApiTtsService : ITtsService
         throw new NotImplementedException(
             "第三方 TTS API 尚未接入。请在设置里把 TTSProvider 改回 \"local\"。");
     }
-
+    public Task PrewarmReferenceAudioAsync(int characterId) => Task.CompletedTask; // 远程 API 场景不需要这个优化
     public Task StopAsync() => Task.CompletedTask;
 }

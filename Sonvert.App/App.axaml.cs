@@ -105,6 +105,8 @@ public partial class App : Application
         Sonvert.App.Services.History.HistoryRepository>();
         services.AddSingleton<Sonvert.App.Services.History.HistoryRetentionCleaner>();
 
+        services.AddSingleton<IGlossaryRepository, GlossaryRepository>();
+
         services.AddSingleton<HistoryViewModel>();
     }
 

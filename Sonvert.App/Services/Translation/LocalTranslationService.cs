@@ -18,6 +18,7 @@ public class LocalTranslationService : ITranslationService, IAsyncDisposable
 {
     private readonly ISettingsService _settingsService;
     private readonly HttpClient _httpClient;
+    private readonly IGlossaryRepository _glossaryRepository;
     private Process? _process;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -25,9 +26,10 @@ public class LocalTranslationService : ITranslationService, IAsyncDisposable
         PropertyNameCaseInsensitive = true,
     };
 
-    public LocalTranslationService(ISettingsService settingsService)
+    public LocalTranslationService(ISettingsService settingsService, IGlossaryRepository glossaryRepository)
     {
         _settingsService = settingsService;
+        _glossaryRepository = glossaryRepository;
         _httpClient = new HttpClient
         {
             BaseAddress = new Uri($"http://127.0.0.1:{_settingsService.Current.MTPort}"),
@@ -131,9 +133,11 @@ public class LocalTranslationService : ITranslationService, IAsyncDisposable
     public async Task<TranslationResult> TranslateAsync(
         string text, string sourceLanguage, string targetLanguage)
     {
+        var glossary = await _glossaryRepository.GetAllAsync();
+        var textToTranslate = GlossaryReplacer.Replace(text, glossary);
         var request = new TranslateRequest
         {
-            Text = text,
+            Text = textToTranslate,
             SourceLang = sourceLanguage,
             TargetLang = targetLanguage,
         };

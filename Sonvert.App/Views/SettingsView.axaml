@@ -184,6 +184,38 @@
       </StackPanel>
       </Border>
 
+        <Border Classes="SettingsCard">
+  <StackPanel>
+    <TextBlock Classes="SectionTitle" Text="翻译术语表" />
+    <TextBlock Foreground="{StaticResource TextSecondaryBrush}" FontSize="12" Margin="0,0,0,10"
+               Text="识别到左边的词/短语时，翻译前会直接替换成右边指定的内容再交给翻译模型。" />
+
+    <Grid ColumnDefinitions="*,*,Auto" Margin="0,0,0,10">
+      <TextBox Grid.Column="0" Text="{Binding NewGlossarySourceTerm}" Watermark="原文术语" Margin="0,0,6,0" />
+      <TextBox Grid.Column="1" Text="{Binding NewGlossaryTargetTerm}" Watermark="目标译文" Margin="0,0,6,0" />
+      <Button Grid.Column="2" Content="添加" Command="{Binding AddGlossaryEntryCommand}"
+              Background="{StaticResource AccentBrush}" Foreground="{StaticResource BackgroundBrush}"
+              Padding="14,6" CornerRadius="6" />
+    </Grid>
+
+    <ItemsControl ItemsSource="{Binding GlossaryEntries}">
+      <ItemsControl.ItemTemplate>
+        <DataTemplate x:DataType="models:GlossaryEntry">
+          <Grid ColumnDefinitions="*,*,Auto" Margin="0,0,0,6">
+            <TextBlock Grid.Column="0" Text="{Binding SourceTerm}" Foreground="{StaticResource TextPrimaryBrush}" />
+            <TextBlock Grid.Column="1" Text="{Binding TargetTerm}" Foreground="{StaticResource TextSecondaryBrush}" />
+            <Button Grid.Column="2" Content="删除"
+                    Command="{Binding $parent[ItemsControl].((vm:SettingsViewModel)DataContext).DeleteGlossaryEntryCommand}"
+                    CommandParameter="{Binding}"
+                    Background="{StaticResource DangerBrush}" Foreground="{StaticResource TextPrimaryBrush}"
+                    Padding="10,4" CornerRadius="6" />
+          </Grid>
+        </DataTemplate>
+      </ItemsControl.ItemTemplate>
+    </ItemsControl>
+  </StackPanel>
+</Border>
+
       <!-- ===== 保存 ===== -->
       <Grid ColumnDefinitions="*,Auto" Margin="0,4,0,32">
         <TextBlock Grid.Column="0" Text="{Binding SaveStatusMessage}"

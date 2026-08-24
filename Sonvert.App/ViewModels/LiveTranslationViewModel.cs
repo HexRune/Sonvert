@@ -72,7 +72,21 @@ public partial class LiveTranslationViewModel : ViewModelBase
         try
         {
             var loadTranslationTask = _translationService.StartAsync();
-            var loadTtsTask = _ttsService.StartAsync();
+
+            // TTS 启动完成后紧接着做一次参考音频预热——链式接在 StartAsync()
+            // 后面，而不是跟它并行，因为预热依赖 GPT-SoVITS 进程已经就绪
+            // （子进程还没启动完就调 /set_refer_audio 只会请求失败）。
+            // 这整个链条依然是跟识别会话、翻译服务的启动并行进行的，
+            // 不会额外拖慢"开始翻译"按钮的响应速度。
+            var loadTtsTask = _ttsService.StartAsync().ContinueWith(async _ =>
+            {
+                var activeCharacterId = _settingsService.Current.ActiveCharacterId;
+                if (activeCharacterId is { } characterId)
+                {
+                    await _ttsService.PrewarmReferenceAudioAsync(characterId);
+                }
+            }).Unwrap();
+
             await _recognitionSession.StartAsync();
             await loadTranslationTask;
             await loadTtsTask;
