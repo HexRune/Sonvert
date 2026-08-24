@@ -31,9 +31,9 @@ public partial class HomeViewModel : ViewModelBase
 
     public ObservableCollection<LanguageOption> RecognitionLanguageOptions { get; } = new()
     {
-        new LanguageOption { Code = "auto", DisplayName = "自动识别" },
-        new LanguageOption { Code = "zh", DisplayName = "只说中文" },
-        new LanguageOption { Code = "en", DisplayName = "只说英文" },
+        new LanguageOption { Code = "auto", DisplayName = "自动" },
+        new LanguageOption { Code = "zh", DisplayName = "中文" },
+        new LanguageOption { Code = "en", DisplayName = "英文" },
     };
 
     partial void OnRecognitionLanguageChanged(string value)

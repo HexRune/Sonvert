@@ -130,52 +130,7 @@
         </StackPanel>
       </Border>
 
-      <!-- ===== 情绪参考音频 ===== -->
-      <Border Classes="SettingsCard">
-        <StackPanel>
-          <Grid ColumnDefinitions="*,Auto">
-            <TextBlock Grid.Column="0" Classes="SectionTitle" Text="情绪参考音频" />
-            <Button Grid.Column="1" Content="+ 添加情绪"
-                    Command="{Binding AddEmotionClipCommand}"
-                    Background="{StaticResource NavItemHoverBrush}"
-                    Foreground="{StaticResource TextPrimaryBrush}"
-                    Padding="12,6" CornerRadius="6" />
-          </Grid>
-
-          <TextBlock Text="每种情绪对应一段参考音频——合成时会按识别出的情绪标签自动选用。NEUTRAL 是必需的兜底项。"
-                     Foreground="{StaticResource TextSecondaryBrush}" FontSize="12"
-                     TextWrapping="Wrap" Margin="0,0,0,12" />
-
-          <ItemsControl ItemsSource="{Binding EmotionClips}">
-            <ItemsControl.ItemTemplate>
-              <DataTemplate x:DataType="models:EmotionReferenceClipItem">
-                <Border BorderBrush="{StaticResource CardBorderBrush}" BorderThickness="1"
-                        CornerRadius="8" Padding="14" Margin="0,0,0,10">
-                  <StackPanel>
-                    <Grid ColumnDefinitions="*,Auto">
-                      <TextBox Grid.Column="0" Text="{Binding Emotion}"
-                               Watermark="情绪标签，如 HAPPY / ANGRY"
-                               FontWeight="SemiBold" />
-                      <Button Grid.Column="1" Content="删除"
-                              Command="{Binding $parent[ItemsControl].((vm:SettingsViewModel)DataContext).RemoveEmotionClipCommand}"
-                              CommandParameter="{Binding}"
-                              Background="{StaticResource DangerBrush}"
-                              Foreground="{StaticResource TextPrimaryBrush}"
-                              Padding="10,4" CornerRadius="6" Margin="8,0,0,0" />
-                    </Grid>
-
-                    <TextBlock Classes="FieldLabel" Text="参考音频路径" />
-                    <TextBox Text="{Binding AudioPath}" />
-
-                    <TextBlock Classes="FieldLabel" Text="参考音频对应文本" />
-                    <TextBox Text="{Binding PromptText}" AcceptsReturn="True" TextWrapping="Wrap" Height="60" />
-                  </StackPanel>
-                </Border>
-              </DataTemplate>
-            </ItemsControl.ItemTemplate>
-          </ItemsControl>
-        </StackPanel>
-      </Border>
+      <!-- ===== 历史记录 ===== -->
       <Border Classes="SettingsCard">
       <StackPanel>
         <TextBlock Classes="SectionTitle" Text="历史记录" />
@@ -183,38 +138,38 @@
         <TextBox Text="{Binding HistoryRetentionDays}" Width="120" HorizontalAlignment="Left" />
       </StackPanel>
       </Border>
-
+        <!-- ===== 关键字替换 ===== -->
         <Border Classes="SettingsCard">
-  <StackPanel>
-    <TextBlock Classes="SectionTitle" Text="翻译术语表" />
-    <TextBlock Foreground="{StaticResource TextSecondaryBrush}" FontSize="12" Margin="0,0,0,10"
-               Text="识别到左边的词/短语时，翻译前会直接替换成右边指定的内容再交给翻译模型。" />
+          <StackPanel>
+            <TextBlock Classes="SectionTitle" Text="翻译术语表" />
+            <TextBlock Foreground="{StaticResource TextSecondaryBrush}" FontSize="12" Margin="0,0,0,10"
+                       Text="识别到左边的词/短语时，翻译前会直接替换成右边指定的内容再交给翻译模型。" />
 
-    <Grid ColumnDefinitions="*,*,Auto" Margin="0,0,0,10">
-      <TextBox Grid.Column="0" Text="{Binding NewGlossarySourceTerm}" Watermark="原文术语" Margin="0,0,6,0" />
-      <TextBox Grid.Column="1" Text="{Binding NewGlossaryTargetTerm}" Watermark="目标译文" Margin="0,0,6,0" />
-      <Button Grid.Column="2" Content="添加" Command="{Binding AddGlossaryEntryCommand}"
-              Background="{StaticResource AccentBrush}" Foreground="{StaticResource BackgroundBrush}"
-              Padding="14,6" CornerRadius="6" />
-    </Grid>
+            <Grid ColumnDefinitions="*,*,Auto" Margin="0,0,0,10">
+              <TextBox Grid.Column="0" Text="{Binding NewGlossarySourceTerm}" Watermark="原文术语" Margin="0,0,6,0" />
+              <TextBox Grid.Column="1" Text="{Binding NewGlossaryTargetTerm}" Watermark="目标译文" Margin="0,0,6,0" />
+              <Button Grid.Column="2" Content="添加" Command="{Binding AddGlossaryEntryCommand}"
+                      Background="{StaticResource AccentBrush}" Foreground="{StaticResource BackgroundBrush}"
+                      Padding="14,6" CornerRadius="6" />
+            </Grid>
 
-    <ItemsControl ItemsSource="{Binding GlossaryEntries}">
-      <ItemsControl.ItemTemplate>
-        <DataTemplate x:DataType="models:GlossaryEntry">
-          <Grid ColumnDefinitions="*,*,Auto" Margin="0,0,0,6">
-            <TextBlock Grid.Column="0" Text="{Binding SourceTerm}" Foreground="{StaticResource TextPrimaryBrush}" />
-            <TextBlock Grid.Column="1" Text="{Binding TargetTerm}" Foreground="{StaticResource TextSecondaryBrush}" />
-            <Button Grid.Column="2" Content="删除"
-                    Command="{Binding $parent[ItemsControl].((vm:SettingsViewModel)DataContext).DeleteGlossaryEntryCommand}"
-                    CommandParameter="{Binding}"
-                    Background="{StaticResource DangerBrush}" Foreground="{StaticResource TextPrimaryBrush}"
-                    Padding="10,4" CornerRadius="6" />
-          </Grid>
-        </DataTemplate>
-      </ItemsControl.ItemTemplate>
-    </ItemsControl>
-  </StackPanel>
-</Border>
+            <ItemsControl ItemsSource="{Binding GlossaryEntries}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="models:GlossaryEntry">
+                  <Grid ColumnDefinitions="*,*,Auto" Margin="0,0,0,6">
+                    <TextBlock Grid.Column="0" Text="{Binding SourceTerm}" Foreground="{StaticResource TextPrimaryBrush}" />
+                    <TextBlock Grid.Column="1" Text="{Binding TargetTerm}" Foreground="{StaticResource TextSecondaryBrush}" />
+                    <Button Grid.Column="2" Content="删除"
+                            Command="{Binding $parent[ItemsControl].((vm:SettingsViewModel)DataContext).DeleteGlossaryEntryCommand}"
+                            CommandParameter="{Binding}"
+                            Background="{StaticResource DangerBrush}" Foreground="{StaticResource TextPrimaryBrush}"
+                            Padding="10,4" CornerRadius="6" />
+                  </Grid>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </StackPanel>
+        </Border>
 
       <!-- ===== 保存 ===== -->
       <Grid ColumnDefinitions="*,Auto" Margin="0,4,0,32">

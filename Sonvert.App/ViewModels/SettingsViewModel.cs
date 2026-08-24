@@ -50,8 +50,6 @@ public partial class SettingsViewModel : ViewModelBase
     [ObservableProperty] private string _ttsApiKey = string.Empty;
     [ObservableProperty] private string _ttsApiModel = string.Empty;
 
-    public ObservableCollection<EmotionReferenceClipItem> EmotionClips { get; } = new();
-
     [ObservableProperty]
     private string? _saveStatusMessage;
 
@@ -60,6 +58,7 @@ public partial class SettingsViewModel : ViewModelBase
         _settingsService = settingsService;
         _glossaryRepository = glossaryRepository;
         LoadFromSettings();
+        _ = LoadGlossaryAsync();
     }
 
     private void LoadFromSettings()
@@ -90,36 +89,6 @@ public partial class SettingsViewModel : ViewModelBase
         TtsApiKey = s.TTSApiKey;
         TtsApiModel = s.TTSApiModel;
 
-        EmotionClips.Clear();
-        foreach (var (emotion, clip) in s.TTSReferenceAudioByEmotion)
-        {
-            EmotionClips.Add(new EmotionReferenceClipItem
-            {
-                Emotion = emotion,
-                AudioPath = clip.AudioPath,
-                PromptText = clip.PromptText,
-            });
-        }
-    }
-
-    [RelayCommand]
-    private void AddEmotionClip()
-    {
-        EmotionClips.Add(new EmotionReferenceClipItem { Emotion = "HAPPY" });
-    }
-
-    [RelayCommand]
-    private void RemoveEmotionClip(EmotionReferenceClipItem item)
-    {
-        // NEUTRAL 是兜底项，LocalTtsService 找不到对应情绪时会退回用它，
-        // 删掉会导致运行时报错，所以在界面这一层就不让删。
-        if (item.Emotion == "NEUTRAL")
-        {
-            SaveStatusMessage = "NEUTRAL 是必需的兜底项，不能删除";
-            return;
-        }
-
-        EmotionClips.Remove(item);
     }
 
     [RelayCommand]
@@ -152,15 +121,6 @@ public partial class SettingsViewModel : ViewModelBase
         s.TTSApiModel = TtsApiModel;
 
         s.TTSReferenceAudioByEmotion.Clear();
-        foreach (var item in EmotionClips)
-        {
-            if (string.IsNullOrWhiteSpace(item.Emotion)) continue;
-            s.TTSReferenceAudioByEmotion[item.Emotion] = new TtsReferenceClip
-            {
-                AudioPath = item.AudioPath,
-                PromptText = item.PromptText,
-            };
-        }
 
         await _settingsService.SaveAsync();
 

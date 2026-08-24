@@ -31,7 +31,6 @@ public partial class MainViewModel : ViewModelBase
         new NavItem { Title = "声音克隆" },
         new NavItem { Title = "发声角色" },
         new NavItem { Title = "历史记录" },
-        new NavItem { Title = "识别对比测试" },
         new NavItem { Title = "设置" },
     };
 
