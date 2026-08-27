@@ -1,22 +1,32 @@
 ﻿using System;
 using System.IO;
 using System.Threading.Tasks;
+using NAudio.CoreAudioApi;
 using NAudio.Wave;
+using Sonvert.App.Settings;
 
 namespace Sonvert.App.Services.Audio;
 
 public class NAudioPlaybackService : IAudioPlaybackService
 {
-    // 这套设计假设同一时间只有一句在播放（LiveTranslationViewModel 是
-    // 顺序调用 PlayAsync 的），所以只用一个字段记录"当前正在播放的设备"
-    // 就够了，不需要维护一个列表。
-    private WaveOutEvent? _currentOutputDevice;
+    private readonly ISettingsService _settingsService;
+    private WasapiOut? _currentOutputDevice;
+
+    public NAudioPlaybackService(ISettingsService settingsService)
+    {
+        _settingsService = settingsService;
+    }
 
     public Task PlayAsync(byte[] audioData)
     {
         var tcs = new TaskCompletionSource();
 
-        var outputDevice = new WaveOutEvent();
+        var device = ResolveOutputDevice();
+
+        // shareMode: Shared——跟系统里其他程序共享这个输出设备，不会
+        // 独占它导致别的程序（比如你正在放的游戏/音乐）被打断，这是
+        // 播放场景下的正常预期行为。
+        var outputDevice = new WasapiOut(device, AudioClientShareMode.Shared, useEventSync: true, latency: 200);
         var stream = new MemoryStream(audioData);
         var reader = new WaveFileReader(stream);
 
@@ -27,26 +37,15 @@ public class NAudioPlaybackService : IAudioPlaybackService
             outputDevice.Dispose();
             reader.Dispose();
             stream.Dispose();
+            device.Dispose();
 
-            // 只有当它还是"当前"这一个的时候才清空字段——避免极端情况下
-            // 上一句的 PlaybackStopped 回调，把已经开始播放的下一句的
-            // 引用给清掉了。
             if (ReferenceEquals(_currentOutputDevice, outputDevice))
             {
                 _currentOutputDevice = null;
             }
 
-            // Stop() 主动调用触发的 PlaybackStopped，args.Exception 是 null，
-            // 跟正常播完的情况区分不开，但对这里的用途来说不需要区分——
-            // 不管是播完了还是被打断了，调用方只关心"这次 PlayAsync 结束了"。
-            if (args.Exception != null)
-            {
-                tcs.SetException(args.Exception);
-            }
-            else
-            {
-                tcs.SetResult();
-            }
+            if (args.Exception != null) tcs.SetException(args.Exception);
+            else tcs.SetResult();
         };
 
         _currentOutputDevice = outputDevice;
@@ -57,10 +56,29 @@ public class NAudioPlaybackService : IAudioPlaybackService
 
     public Task StopAsync()
     {
-        // Stop() 是同步的，调用后会触发上面注册的 PlaybackStopped 回调，
-        // 对应那次 PlayAsync 的 Task 会随之完成——不需要在这里自己再
-        // 完成一次 TaskCompletionSource，回调里已经处理了。
         _currentOutputDevice?.Stop();
         return Task.CompletedTask;
+    }
+
+    private MMDevice ResolveOutputDevice()
+    {
+        var enumerator = new MMDeviceEnumerator();
+        var deviceId = _settingsService.Current.OutputDeviceId;
+
+        if (string.IsNullOrEmpty(deviceId))
+        {
+            return enumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia);
+        }
+
+        try
+        {
+            return enumerator.GetDevice(deviceId);
+        }
+        catch (Exception)
+        {
+            // 之前选的设备可能已经被拔掉/禁用了，找不到就兜底退回默认设备，
+            // 不要让播放直接失败。
+            return enumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia);
+        }
     }
 }

@@ -71,21 +71,32 @@ public partial class LiveTranslationViewModel : ViewModelBase
         ErrorMessage = null;
         try
         {
-            var loadTranslationTask = _translationService.StartAsync();
+            var settings = _settingsService.Current;
+            // 翻译服务启动完成后紧接着调一次模型预加载——跟 TTS 那边的
+            var loadTranslationTask = settings.TranslationProvider == "api"
+            ? Task.CompletedTask
+            : _translationService.StartAsync().ContinueWith(async _ =>
+            {
+                await _translationService.LoadModelAsync();
+            }).Unwrap();
 
             // TTS 启动完成后紧接着做一次参考音频预热——链式接在 StartAsync()
             // 后面，而不是跟它并行，因为预热依赖 GPT-SoVITS 进程已经就绪
             // （子进程还没启动完就调 /set_refer_audio 只会请求失败）。
             // 这整个链条依然是跟识别会话、翻译服务的启动并行进行的，
             // 不会额外拖慢"开始翻译"按钮的响应速度。
-            var loadTtsTask = _ttsService.StartAsync().ContinueWith(async _ =>
+            var shouldStartTts = settings.EnableTtsPlayback && settings.TTSProvider != "api";
+
+            var loadTtsTask = shouldStartTts
+            ? _ttsService.StartAsync().ContinueWith(async _ =>
             {
                 var activeCharacterId = _settingsService.Current.ActiveCharacterId;
                 if (activeCharacterId is { } characterId)
                 {
                     await _ttsService.PrewarmReferenceAudioAsync(characterId);
                 }
-            }).Unwrap();
+            }).Unwrap()
+            : Task.CompletedTask;
 
             await _recognitionSession.StartAsync();
             await loadTranslationTask;
@@ -179,15 +190,24 @@ public partial class LiveTranslationViewModel : ViewModelBase
             }
         }
 
-        try
+        if (_settingsService.Current.EnableTtsPlayback)
         {
-            var ttsResult = await _ttsService.SynthesizeAsync(textToSpeak, configuredTarget, emotion ?? "NEUTRAL");
-            playbackSlot.Complete(ttsResult.AudioData);
-            translatedAudioForHistory = ttsResult.AudioData; // 合成成功，记下这段音频
+            try
+            {
+                var ttsResult = await _ttsService.SynthesizeAsync(textToSpeak, configuredTarget, emotion ?? "NEUTRAL");
+                playbackSlot.Complete(ttsResult.AudioData);
+                translatedAudioForHistory = ttsResult.AudioData;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[TTS] 合成失败: {ex.Message}");
+                playbackSlot.Complete(null);
+            }
         }
-        catch (Exception ex)
+        else
         {
-            System.Diagnostics.Debug.WriteLine($"[TTS] 合成失败: {ex.Message}");
+            // 关闭了 TTS 播放——这句话的播放位置直接标记为"跳过"，
+            // 不去调用合成，历史记录里这句自然也就没有合成音频。
             playbackSlot.Complete(null);
         }
 

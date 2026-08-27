@@ -133,8 +133,13 @@ public class LocalTranslationService : ITranslationService, IAsyncDisposable
     public async Task<TranslationResult> TranslateAsync(
         string text, string sourceLanguage, string targetLanguage)
     {
-        var glossary = await _glossaryRepository.GetAllAsync();
-        var textToTranslate = GlossaryReplacer.Replace(text, glossary);
+        var textToTranslate = text;
+  
+        if (_settingsService.Current.GlossaryEnabled)
+        {
+            var glossary = await _glossaryRepository.GetAllAsync();
+            textToTranslate = GlossaryReplacer.Replace(text, glossary);
+        }
         var request = new TranslateRequest
         {
             Text = textToTranslate,

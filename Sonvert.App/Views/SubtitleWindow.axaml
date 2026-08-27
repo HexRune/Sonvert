@@ -1,0 +1,65 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:Sonvert.App.ViewModels"
+        xmlns:models="using:Sonvert.App.Models"
+        x:Class="Sonvert.App.Views.SubtitleWindow"
+        x:DataType="vm:SubtitleWindowViewModel"
+        Title="Sonvert 字幕"
+        SystemDecorations="None"
+        TransparencyLevelHint="Transparent"
+        Background="Transparent"
+        Topmost="True"
+        ShowInTaskbar="False"
+        CanResize="True"
+        MinWidth="300" MinHeight="80">
+
+  <Grid>
+
+    <Border Name="SubtitleBackground" Background="Black" Opacity="{Binding BackgroundOpacity}" CornerRadius="8" />
+
+    <!-- 内容区改成可滚动列表：旧的在上，新的在下，最新一条自然出现在
+         底部——这跟字幕/聊天记录类应用的常见交互一致。 -->
+    <ScrollViewer Name="ContentScrollViewer" Margin="16,12">
+      <ItemsControl Name="ContentItemsControl" ItemsSource="{Binding Items}">
+        <ItemsControl.ItemTemplate>
+          <DataTemplate x:DataType="models:RecognitionResultItem">
+            <StackPanel Spacing="2" Margin="0,0,0,10">
+              <TextBlock Text="{Binding Text}"
+                         IsVisible="{Binding $parent[ItemsControl].((vm:SubtitleWindowViewModel)DataContext).ShowSourceText}"
+                         FontSize="{Binding $parent[ItemsControl].((vm:SubtitleWindowViewModel)DataContext).FontSize}"
+                         Foreground="{Binding $parent[ItemsControl].((vm:SubtitleWindowViewModel)DataContext).TextColor}"
+                         TextWrapping="Wrap"
+                         TextAlignment="Center" />
+              <TextBlock Text="{Binding TranslatedText}"
+                         FontSize="{Binding $parent[ItemsControl].((vm:SubtitleWindowViewModel)DataContext).FontSize}"
+                         FontWeight="SemiBold"
+                         Foreground="{Binding $parent[ItemsControl].((vm:SubtitleWindowViewModel)DataContext).TextColor}"
+                         TextWrapping="Wrap"
+                         TextAlignment="Center" />
+            </StackPanel>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+    </ScrollViewer>
+
+    <Button Name="LockButton"
+            Content="🔒"
+            Width="26" Height="26"
+            HorizontalAlignment="Right" VerticalAlignment="Top"
+            Margin="0,6,6,0"
+            Background="Transparent"
+            Opacity="0.5"
+            CornerRadius="13"
+            Padding="0"
+            FontSize="13" />
+
+    <Rectangle Name="ResizeLeft" Width="8" HorizontalAlignment="Left" Fill="Transparent" Cursor="SizeWestEast" />
+    <Rectangle Name="ResizeRight" Width="8" HorizontalAlignment="Right" Fill="Transparent" Cursor="SizeWestEast" />
+    <Rectangle Name="ResizeTop" Height="8" VerticalAlignment="Top" Fill="Transparent" Cursor="SizeNorthSouth" />
+    <Rectangle Name="ResizeBottom" Height="8" VerticalAlignment="Bottom" Fill="Transparent" Cursor="SizeNorthSouth" />
+    <Rectangle Name="ResizeBottomRight" Width="12" Height="12"
+               HorizontalAlignment="Right" VerticalAlignment="Bottom"
+               Fill="Transparent" Cursor="BottomRightCorner" />
+
+  </Grid>
+</Window>

@@ -17,6 +17,43 @@ public class AppSettings
     /// 这个值，删掉超期的记录。</summary>
     public int? HistoryRetentionDays { get; set; } = null;
 
+    /// <summary>是否启用翻译术语表——关闭后，翻译前不再做 GlossaryReplacer
+    /// 那步替换，即使术语表里配置了内容，也完全不生效，方便临时关闭这个
+    /// 功能而不用清空整个术语表。</summary>
+    public bool GlossaryEnabled { get; set; } = true;
+
+    /// <summary>是否要把翻译结果合成语音并播放——关闭后，识别和翻译照常
+    /// 进行（字幕/文字记录不受影响），只是跳过 TTS 合成和播放这两步。
+    /// 用于"翻译游戏/电影字幕，只看不听"这类场景，避免合成语音和原始
+    /// 音轨叠在一起变得嘈杂。</summary>
+    public bool EnableTtsPlayback { get; set; } = true;
+
+    // ---- 悬浮字幕 ----
+
+    /// <summary>字幕功能总开关——跟"语音播报"完全独立，可以任意组合开关。</summary>
+    public bool SubtitleEnabled { get; set; } = false;
+
+    /// <summary>字幕内容模式：true 显示原文+译文两行，false 只显示译文。</summary>
+    public bool SubtitleShowSourceText { get; set; } = true;
+
+    public double SubtitleFontSize { get; set; } = 20;
+
+    /// <summary>文字颜色，十六进制字符串（如 "#FFFFFF"）。</summary>
+    public string SubtitleTextColor { get; set; } = "#FFFFFF";
+
+    /// <summary>背景不透明度，0（完全透明）到 1（完全不透明）之间。</summary>
+    public double SubtitleBackgroundOpacity { get; set; } = 0.7;
+
+    /// <summary>
+    /// 悬浮窗口上次的位置和大小——用户拖动调整后记住，下次打开沿用。
+    /// 都是可空的：首次使用时是 null，由 SubtitleWindowService 决定一个
+    /// 默认位置（屏幕底部居中），不需要在这里预先算好。
+    /// </summary>
+    public double? SubtitleWindowX { get; set; }
+    public double? SubtitleWindowY { get; set; }
+    public double SubtitleWindowWidth { get; set; } = 640;
+    public double SubtitleWindowHeight { get; set; } = 140;
+
     // ---- SenseVoiceService ----
     public int SenseVoicePort { get; set; } = 8878;
 
@@ -27,12 +64,18 @@ public class AppSettings
     public string SenseVoiceWorkingDirectory { get; set; } = DefaultDevWorkingDirectory();
 
     public string VadModelPath { get; set; } = string.Empty;
-    public int InputDeviceIndex { get; set; } = -1;
-    
-    /// <summary>语音识别的语言模式："auto"（自动检测，可能偶发把中文误判成
-    /// 日语/粤语等）、"zh"（强制按中文解码）、"en"（强制按英文解码）。
-    /// 直播场景下主播整场基本只用一种语言，建议强制指定，避免 auto 模式
-    /// 偶发误判。</summary>
+    /// <summary>选中的音频输入设备种类。</summary>
+    public string InputDeviceKind { get; set; } = "Microphone"; // "Microphone" | "Loopback"
+
+    /// <summary>音频输入设备的 Id。"-1" 是一个特殊值，对应 Windows 的
+    /// "跟随系统默认录音设备"这个约定，不是某个固定设备——用户以后在系统
+    /// 设置里换了默认麦克风，这边不用重新选择就会自动跟着变。这也是默认值，
+    /// 保证不用手动选设备也能直接用。</summary>
+    public string InputDeviceId { get; set; } = "-1";
+
+    /// <summary>音频输出设备的 Id——WASAPI 的 MMDevice.ID（一长串 GUID 格式
+    /// 字符串）。空字符串表示"跟随系统默认播放设备"，是默认值。</summary>
+    public string OutputDeviceId { get; set; } = string.Empty;
     public string RecognitionLanguage { get; set; } = "auto";
 
     private static string DefaultDevWorkingDirectory() => Path.GetFullPath(

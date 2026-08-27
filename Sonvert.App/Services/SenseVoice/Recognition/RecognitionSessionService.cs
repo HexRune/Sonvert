@@ -14,14 +14,14 @@
 // 踩过坑之后定下来的，没有理由重新犯一遍。
 // ============================================================================
 
+using SherpaOnnx;
+using Sonvert.App.Services.Audio;
+using Sonvert.App.Services.SenseVoice;
+using Sonvert.App.Settings;
 using System;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
-using NAudio.Wave;
-using SherpaOnnx;
-using Sonvert.App.Services.SenseVoice;
-using Sonvert.App.Settings;
 
 namespace Sonvert.App.Services.Recognition;
 
@@ -59,8 +59,7 @@ public class RecognitionSessionService : IRecognitionSessionService
     private readonly ISenseVoiceService _senseVoiceService;
 
     private VoiceActivityDetector? _vad;
-    
-    private WaveInEvent? _waveIn;
+    private IAudioInputSource? _audioInput;
 
     // 用 Channel 替代旧代码里的 BlockingCollection——语义上是等价的
     // （生产者/消费者队列），但 Channel 原生支持 async 读取
@@ -118,16 +117,11 @@ public class RecognitionSessionService : IRecognitionSessionService
         _processingCts = new CancellationTokenSource();
         _processingTask = Task.Run(() => ProcessSegmentsLoopAsync(_processingCts.Token));
 
-        _waveIn = new WaveInEvent
-        {
-            WaveFormat = new WaveFormat(SampleRate, 16, 1),
-            BufferMilliseconds = 100,
-            DeviceNumber = settings.InputDeviceIndex >= 0 ? settings.InputDeviceIndex : 0,
-        };
-        _waveIn.DataAvailable += OnDataAvailable;
+        _audioInput = CreateAudioInputSource(settings);
+        _audioInput.DataAvailable += OnAudioDataAvailable;
 
         _isRunning = true;
-        _waveIn.StartRecording();
+        _audioInput.Start();
     }
 
     public async Task StopAsync()
@@ -138,10 +132,8 @@ public class RecognitionSessionService : IRecognitionSessionService
         }
         _isRunning = false;
 
-        _waveIn!.StopRecording();
-        _waveIn.DataAvailable -= OnDataAvailable;
-        _waveIn.Dispose();
-        _waveIn = null;
+        _audioInput?.Dispose();
+        _audioInput = null;
 
         // 关键顺序（跟旧代码的教训一致）：先停止接收新任务、等后台处理任务
         // 彻底跑完退出，确认它已经不再使用 _vad，才轮到释放 VAD。
@@ -158,28 +150,30 @@ public class RecognitionSessionService : IRecognitionSessionService
         _processingCts = null;
     }
 
-    private void OnDataAvailable(object? sender, WaveInEventArgs e)
+    private void OnAudioDataAvailable(object? sender, float[] samples)
     {
-        int sampleCount = e.BytesRecorded / 2;
-        var samples = new float[sampleCount];
-        for (int i = 0; i < sampleCount; i++)
-        {
-            short sample = BitConverter.ToInt16(e.Buffer, i * 2);
-            samples[i] = sample / 32768f;
-        }
-
         _vad!.AcceptWaveform(samples);
 
-        // VAD 判断出一段(或多段)完整语音了，取出来写进 Channel——这里只是
-        // "入队"，很快就返回，真正耗时的识别在后台任务里做，不会堵住这个
-        // 采集回调，新来的音频不会因此丢失。TryWrite 在 Unbounded channel
-        // 上永远会成功，不需要 await。
         while (!_vad.IsEmpty())
         {
             var segment = _vad.Front();
             _vad.Pop();
             _segmentChannel!.Writer.TryWrite(segment.Samples);
         }
+    }
+    private static IAudioInputSource CreateAudioInputSource(AppSettings settings)
+    {
+        if (settings.InputDeviceKind == "Loopback" && !string.IsNullOrWhiteSpace(settings.InputDeviceId))
+        {
+            using var deviceEnumerator = new NAudio.CoreAudioApi.MMDeviceEnumerator();
+            var device = deviceEnumerator.GetDevice(settings.InputDeviceId);
+            return new Sonvert.App.Services.Audio.LoopbackInputSource(device);
+        }
+
+        // 解析失败（比如设置文件里这个值意外变成空字符串）时兜底成 -1，
+        // 也就是"系统默认麦克风"，而不是之前那个固定写死的 0——
+        var micDeviceNumber = int.TryParse(settings.InputDeviceId, out var idx) ? idx : -1;
+        return new Sonvert.App.Services.Audio.MicrophoneInputSource(micDeviceNumber);
     }
 
     private async Task ProcessSegmentsLoopAsync(CancellationToken ct)
