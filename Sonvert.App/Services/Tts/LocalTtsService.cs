@@ -141,11 +141,11 @@ public class LocalTtsService : ITtsService, IAsyncDisposable
             throw new InvalidOperationException("还没选择角色，先在首页选一个角色再开始翻译");
         }
 
-        var resolvedClip = await _characterRepository.ResolveClipAsync(characterId, emotion);
+        var resolvedClip = await _characterRepository.ResolveClipAsync(characterId, emotion, language);
         if (resolvedClip is null)
         {
             throw new InvalidOperationException(
-                $"角色 {characterId} 还没有任何参考音频（至少要录制 NEUTRAL），先去\"声音克隆\"页面录一段");
+                $"角色 {characterId} 还没有任何参考音频（中文/英文的 NEUTRAL 至少要录一个），先去\"声音克隆\"页面录一段");
         }
 
         const int maxAttempts = 3;
@@ -155,7 +155,7 @@ public class LocalTtsService : ITtsService, IAsyncDisposable
         {
             var result = await SynthesizeOnceAsync(
                 text, language, resolvedClip.AudioPath, resolvedClip.PromptText,
-                settings.TTSReferenceAudioLanguage);
+                resolvedClip.Language);
 
             lastResult = result;
 

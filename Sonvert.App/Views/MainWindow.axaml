@@ -14,6 +14,25 @@
         WindowDecorations="BorderOnly"
         ExtendClientAreaTitleBarHeightHint="-1">
 
+  <Window.Styles>
+    <!-- 呼吸灯：透明度在 0.3~1.0 之间无限循环渐变，1.2 秒一个周期。
+         只用在顶部横幅栏的运行状态指示点上，那条栏本身只在会话运行中
+         才显示，所以这个动画不需要区分"运行/空闲"两种触发条件——
+         元素一出现在可视树里就是在播放。 -->
+    <Style Selector="Ellipse.Breathing">
+      <Style.Animations>
+        <Animation Duration="0:0:1.2" IterationCount="INFINITE" PlaybackDirection="Alternate">
+          <KeyFrame Cue="0%">
+            <Setter Property="Opacity" Value="0.3" />
+          </KeyFrame>
+          <KeyFrame Cue="100%">
+            <Setter Property="Opacity" Value="1.0" />
+          </KeyFrame>
+        </Animation>
+      </Style.Animations>
+    </Style>
+  </Window.Styles>
+
   <!--
     整体改成上下两段：第 0 行是自绘的标题栏（拖拽区域 + 右上角三个窗口
     按钮），第 1 行是原来的"侧边栏+内容区"两栏布局，整体不变，只是被
@@ -125,22 +144,57 @@
       <!-- ===== 主内容区（完全不变）===== -->
       <Grid Grid.Column="1" RowDefinitions="Auto,*">
 
-        <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="24,20"
-              IsVisible="{Binding IsSessionActive}">
-          <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-            <Ellipse Width="10" Height="10" Fill="{StaticResource DangerBrush}" />
-            <TextBlock Text="正在监听麦克风..."
-                       Foreground="{StaticResource TextSecondaryBrush}"
-                       VerticalAlignment="Center" />
-          </StackPanel>
+        <!--
+          顶部麦克风监听横幅栏：只在翻译会话运行中显示（IsSessionActive）。
+          布局从左到右：呼吸灯 -> 电平指示条 -> 红色方块停止按钮，三者
+          紧凑排列在一起，不拉伸铺满整行——之前用 ColumnDefinitions=
+          "Auto,*,Auto" 会导致中间格子被塞进一个吃掉所有剩余宽度的
+          "*" 列，把停止按钮顶到窗口最右边，跟前面的内容视觉上断开；
+          现在改成三列都是 Auto，并且整个 Grid 显式 HorizontalAlignment=
+          "Left"，三个元素紧跟在一起，停止按钮就贴在电平条右侧。
 
-          <Button Grid.Column="1"
-                  Content="停止"
+          呼吸灯：一个应用了 Breathing 动画的小红点，透明度在 0.3~1.0
+          之间无限循环渐变，模拟真实录音设备"正在录制"的呼吸灯效果。
+
+          电平指示条：ItemsControl 遍历 LiveTranslationViewModel.
+          LevelSegments（一个 IBrush 集合，每一项就是"这一格现在该显示
+          的颜色"，熄灭态和点亮态、点亮时该是绿/黄/红，都是 ViewModel
+          算好的，这里只管渲染）。格数、格子宽度、间距比之前小/密，
+          做出更长更细的"音轨"观感。
+        -->
+        <Grid Grid.Row="0" ColumnDefinitions="Auto,Auto,Auto" Margin="24,20"
+              IsVisible="{Binding IsSessionActive}" ColumnSpacing="12"
+              HorizontalAlignment="Left">
+
+          <Ellipse Grid.Column="0" Classes="Breathing"
+                   Width="10" Height="10" Fill="{StaticResource DangerBrush}"
+                   VerticalAlignment="Center" />
+
+          <ItemsControl Grid.Column="1"
+                        ItemsSource="{Binding LiveTranslation.LevelSegments}"
+                        VerticalAlignment="Center">
+            <ItemsControl.ItemsPanel>
+              <ItemsPanelTemplate>
+                <StackPanel Orientation="Horizontal" Spacing="1.5" VerticalAlignment="Center" />
+              </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+              <DataTemplate>
+                <Rectangle Width="2" Height="16" Fill="{Binding}"
+                           RadiusX="0.5" RadiusY="0.5" />
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+
+          <!-- 红色方块停止按钮：沿用媒体播放器"实心方块=停止"的通用
+               视觉惯例，不放文字。 -->
+          <Button Grid.Column="2"
                   Command="{Binding StopSessionCommand}"
+                  Width="16" Height="16" Padding="0"
                   Background="{StaticResource DangerBrush}"
-                  Foreground="{StaticResource TextPrimaryBrush}"
-                  Padding="20,8"
-                  CornerRadius="6" />
+                  CornerRadius="3"
+                  VerticalAlignment="Center"
+                  ToolTip.Tip="停止翻译" />
         </Grid>
 
         <TextBlock Grid.Row="1"

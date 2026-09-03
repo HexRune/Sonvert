@@ -5,34 +5,44 @@ namespace Sonvert.App.Services.Translation;
 
 /// <summary>
 /// 对外暴露的 ITranslationService 实现，内部按 AppSettings.TranslationProvider
-/// 在 LocalTranslationService 和 ApiTranslationService 之间转发。
-/// ViewModel 只注入这一个类型，完全不用关心切换逻辑。
-///
-/// 已知限制：如果用户在一次翻译会话运行期间临时切换设置，本地子进程
-/// 可能还没被 StartAsync 拉起过——这个场景现在不用管，因为 api 分支
-/// 目前调用即抛异常，等 API 真正实现后再补上"切换时自动 StartAsync
-/// 目标实现"这个细节。
+/// 在 LocalTranslationService 和"API 翻译"之间转发；选了 API 之后，
+/// 再按 AppSettings.TranslationApiKind 在 ApiTranslationService（DeepSeek/
+/// 豆包这类 OpenAI 兼容协议）和 AzureTranslationService（Azure Translator
+/// 专用协议）之间二次选择——这两个协议差异太大（请求体结构、鉴权方式
+/// 都不一样），没有共用同一个实现类，所以路由要分两层。
+/// ViewModel 只注入这一个类型，完全不用关心这两层切换逻辑。
 /// </summary>
 public class TranslationRouter : ITranslationService
 {
     private readonly ISettingsService _settingsService;
     private readonly LocalTranslationService _local;
     private readonly ApiTranslationService _api;
+    private readonly AzureTranslationService _azure;
 
     public Task LoadModelAsync() => Active.LoadModelAsync();
 
     public TranslationRouter(
         ISettingsService settingsService,
         LocalTranslationService local,
-        ApiTranslationService api)
+        ApiTranslationService api,
+        AzureTranslationService azure)
     {
         _settingsService = settingsService;
         _local = local;
         _api = api;
+        _azure = azure;
     }
 
-    private ITranslationService Active =>
-        _settingsService.Current.TranslationProvider == "api" ? _api : _local;
+    private ITranslationService Active
+    {
+        get
+        {
+            var settings = _settingsService.Current;
+            if (settings.TranslationProvider != "api") return _local;
+
+            return settings.TranslationApiKind == "azure" ? _azure : _api;
+        }
+    }
 
     public Task StartAsync() => Active.StartAsync();
 

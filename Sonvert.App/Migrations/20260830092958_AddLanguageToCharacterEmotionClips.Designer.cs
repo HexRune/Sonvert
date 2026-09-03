@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Sonvert.App.Data;
 
@@ -10,9 +11,11 @@ using Sonvert.App.Data;
 namespace Sonvert.App.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260830092958_AddLanguageToCharacterEmotionClips")]
+    partial class AddLanguageToCharacterEmotionClips
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.11");
@@ -50,7 +53,8 @@ namespace Sonvert.App.Migrations
 
                     b.Property<string>("Language")
                         .IsRequired()
-                        .HasColumnType("TEXT");
+                        .HasColumnType("TEXT")
+                        .HasDefaultValue("zh");
 
                     b.Property<string>("PromptText")
                         .IsRequired()
@@ -95,9 +99,6 @@ namespace Sonvert.App.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
 
-                    b.Property<int?>("AsrLatencyMs")
-                        .HasColumnType("INTEGER");
-
                     b.Property<int?>("CharacterId")
                         .HasColumnType("INTEGER");
 
@@ -126,12 +127,6 @@ namespace Sonvert.App.Migrations
 
                     b.Property<string>("TranslatedText")
                         .HasColumnType("TEXT");
-
-                    b.Property<int?>("TranslationLatencyMs")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int?>("TtsLatencyMs")
-                        .HasColumnType("INTEGER");
 
                     b.HasKey("Id");
 

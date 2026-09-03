@@ -17,6 +17,35 @@
   <Color x:Key="CardBorderColor">#2A2A2A</Color>
   <Color x:Key="TagBackgroundColor">#2A2317</Color>
 
+  <!--
+    首页"调音台通道条"改版新增的两个色值——延续现有的暗色+暖橙基调，
+    不引入新色相：
+
+    - SurfaceColor：卡片表面色，比 BackgroundColor 略提亮一点点
+      （#141414 -> #1A1A1A），让卡片有"浮起一层面板"的层次感，
+      不再单纯靠边框线区分卡片和背景。
+    - AccentSubtleColor：AccentColor 的低不透明度版本（20% alpha），
+      用在 API 模式展开区左侧的细竖线、以及未选中态的弱强调点缀上——
+      这类地方需要"看得出是强调色系"但不能抢主强调色的风头。
+  -->
+  <Color x:Key="SurfaceColor">#1A1A1A</Color>
+  <Color x:Key="AccentSubtleColor">#33F0A030</Color>
+
+  <!-- 声音克隆页用——比 SurfaceColor 亮度差距更明显的一档，专门用来
+       让"选中的角色"和"它对应的情绪参考音频面板"在颜色上有肉眼一看
+       就能分辨出来的关联性。之前试过直接用 SurfaceColor（#1A1A1A），
+       跟背景色 #141414 只差 6 个色阶，太接近了，效果不明显。这里跳到
+       #2A2A2A（正好跟 CardBorderColor 同色号，纯属巧合，两个是不同
+       用途的资源，互不影响），亮度差距是 SurfaceColor 的两倍多，
+       在暗色主题里这个跨度已经比较大了，再往上容易显得刺眼、不像
+       "深色系里的一个面板"，反而像单独跳出来的一块。 -->
+  <Color x:Key="SurfaceBrightColor">#2A2A2A</Color>
+
+  <!-- 音量/波形电平表用的"正常"档颜色——绿色，克制地用了一个偏暗的
+       绿而不是荧光绿，跟整体暗色基调不冲突。偏大/爆音两档直接复用
+       已有的 AccentColor(黄橙)/DangerColor(红)，不用再加新色相。 -->
+  <Color x:Key="MeterNormalColor">#4ADE80</Color>
+
   <SolidColorBrush x:Key="BackgroundBrush" Color="{StaticResource BackgroundColor}" />
   <SolidColorBrush x:Key="SidebarBrush" Color="{StaticResource SidebarColor}" />
   <SolidColorBrush x:Key="AccentBrush" Color="{StaticResource AccentColor}" />
@@ -27,4 +56,9 @@
   <SolidColorBrush x:Key="NavItemActiveBrush" Color="{StaticResource NavItemActiveColor}" />
   <SolidColorBrush x:Key="CardBorderBrush" Color="{StaticResource CardBorderColor}" />
   <SolidColorBrush x:Key="TagBackgroundBrush" Color="{StaticResource TagBackgroundColor}" />
+  <SolidColorBrush x:Key="SurfaceBrush" Color="{StaticResource SurfaceColor}" />
+  <SolidColorBrush x:Key="SurfaceBrightBrush" Color="{StaticResource SurfaceBrightColor}" />
+  <SolidColorBrush x:Key="AccentSubtleBrush" Color="{StaticResource AccentSubtleColor}" />
+  <SolidColorBrush x:Key="MeterNormalBrush" Color="{StaticResource MeterNormalColor}" />
 </ResourceDictionary>
+

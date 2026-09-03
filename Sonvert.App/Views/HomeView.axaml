@@ -7,19 +7,62 @@
              x:DataType="vm:HomeViewModel">
 
   <UserControl.Styles>
+    <!--
+      ===== "调音台通道条"视觉改版说明 =====
+      整体思路：这软件本质是一条音频/文本信号链（麦克风->识别->翻译->
+      合成->播放/字幕），首页四张卡片对应链路上的四个"通道"，所以把每
+      张卡片处理成专业调音台/直播混音台的通道条质感，而不是普通表单。
+
+      具体改动：
+      - 卡片背景从"纯边框+透明"改成 SurfaceBrush（比背景色略亮），
+        做出面板浮起的层次感。
+      - 卡片标题行加一个等宽字体的英文短标签（AUDIO IN/TRANSLATE/
+        AUDIO OUT/DISPLAY）+ 一个状态圆点，替代原来单一的中文大标题。
+        标签内容对应真实的分组逻辑（音频输入/文本转换/音频输出/文本
+        展示），不是随便加的装饰。
+      - Provider（本地/API）切换：模型精度(fp32/int8)这类简单二选一还是
+        用描边分段按钮；翻译/语音合成的本地-API 切换改造成了下面的
+        "浏览器式标签页"（BrowserTab + TabBody），标签头本身就是选择
+        动作，不再需要额外一行"提供方"标签+按钮去重复表达。
+    -->
     <Style Selector="Border.SettingsCard">
+      <Setter Property="Background" Value="{StaticResource SurfaceBrush}" />
       <Setter Property="BorderBrush" Value="{StaticResource CardBorderBrush}" />
       <Setter Property="BorderThickness" Value="1" />
       <Setter Property="CornerRadius" Value="10" />
       <Setter Property="Padding" Value="20" />
-      <Setter Property="Margin" Value="0,0,0,16" />
     </Style>
+
+    <!-- 卡片标题行顶部的等宽英文分组标签，比如 "AUDIO IN"。
+         字距拉开+大写，模拟调音台面板上刻印的通道标签质感。 -->
+    <Style Selector="TextBlock.ChannelEyebrow">
+      <Setter Property="FontFamily" Value="Cascadia Mono,Consolas,monospace" />
+      <Setter Property="FontSize" Value="11" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="LetterSpacing" Value="2" />
+      <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
+    </Style>
+
     <Style Selector="TextBlock.SectionTitle">
-      <Setter Property="FontSize" Value="15" />
+      <Setter Property="FontSize" Value="16" />
       <Setter Property="FontWeight" Value="SemiBold" />
       <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
-      <Setter Property="Margin" Value="0,0,0,14" />
     </Style>
+
+    <!-- 状态圆点：空闲态是个空心小圆（次要文字色描边），运行态实心
+         填充强调色——通过 Classes="Active" 切换，绑定 IsSessionRunning。 -->
+    <Style Selector="Ellipse.StatusDot">
+      <Setter Property="Width" Value="8" />
+      <Setter Property="Height" Value="8" />
+      <Setter Property="Stroke" Value="{StaticResource TextSecondaryBrush}" />
+      <Setter Property="StrokeThickness" Value="1.5" />
+      <Setter Property="Fill" Value="Transparent" />
+    </Style>
+    <Style Selector="Ellipse.StatusDot.Active">
+      <Setter Property="Stroke" Value="{StaticResource AccentBrush}" />
+      <Setter Property="Fill" Value="{StaticResource AccentBrush}" />
+    </Style>
+
     <Style Selector="TextBlock.FieldLabel">
       <Setter Property="FontSize" Value="13" />
       <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
@@ -32,7 +75,11 @@
       <Setter Property="CornerRadius" Value="6" />
       <Setter Property="Width" Value="180" />
     </Style>
-    <!-- 分段按钮外观，跟精度那个开关是同一套样式，这次多个板块复用。 -->
+
+    <!-- Provider 切换（本地/API）：描边风格分段按钮，取代原来实心色块，
+         视觉上更像调音台"输入源选择"这类开关而不是表单按钮。
+         目前只有"模型精度(fp32/int8)"这一处还在用它——翻译/语音合成的
+         Provider 切换已经改造成下面的 BrowserTab 标签页样式了。 -->
     <Style Selector="RadioButton.SegmentButton">
       <Setter Property="Padding" Value="16,7" />
       <Setter Property="CornerRadius" Value="6" />
@@ -40,6 +87,8 @@
       <Setter Property="Template">
         <ControlTemplate>
           <Border Background="{TemplateBinding Background}"
+                  BorderBrush="{TemplateBinding BorderBrush}"
+                  BorderThickness="1"
                   CornerRadius="{TemplateBinding CornerRadius}"
                   Padding="{TemplateBinding Padding}">
             <ContentPresenter Content="{TemplateBinding Content}"
@@ -49,182 +98,544 @@
       </Setter>
     </Style>
     <Style Selector="RadioButton.SegmentButton:checked">
-      <Setter Property="Background" Value="{StaticResource AccentBrush}" />
-      <Setter Property="Foreground" Value="{StaticResource BackgroundBrush}" />
+      <Setter Property="Background" Value="{StaticResource AccentSubtleBrush}" />
+      <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+      <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
     </Style>
     <Style Selector="RadioButton.SegmentButton:unchecked">
-      <Setter Property="Background" Value="{StaticResource NavItemHoverBrush}" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderBrush" Value="{StaticResource CardBorderBrush}" />
     </Style>
+
+    <!--
+      ===== 浏览器式标签页（本地/API 切换）=====
+      用于翻译卡片和语音合成卡片的 Provider 切换。设计思路：标签头本身
+      就是"选择 Provider"这个动作，不再需要额外的单选按钮行去重复表达
+      同一件事；标签内容区做成比卡片表面更"凹进去"一级的颜色
+      （BackgroundBrush，比卡片的 SurfaceBrush 暗一点），选中的标签也用
+      这个颜色打底、跟内容区顶部无缝相连，营造"标签页嵌进面板里的一块
+      屏幕"的观感——呼应调音台面板上嵌入小显示屏的做法；未选中的标签
+      直接透明、文字变暗，贴着卡片表面看起来像"没被按下"。
+
+      结构固定是：一个横向标签头(BrowserTab 单选按钮组) + 一个下方内容区
+      Border(TabBody)，两者的圆角要对上（标签只圆上边，内容区只圆下边+
+      右上角，让整体看起来像一块完整面板）。
+    -->
+    <Style Selector="RadioButton.BrowserTab">
+      <Setter Property="Padding" Value="16,7" />
+      <Setter Property="FontSize" Value="13" />
+      <Setter Property="Template">
+        <ControlTemplate>
+          <Border Background="{TemplateBinding Background}"
+                  CornerRadius="6,6,0,0"
+                  Padding="{TemplateBinding Padding}">
+            <ContentPresenter Content="{TemplateBinding Content}"
+                               HorizontalAlignment="Center" />
+          </Border>
+        </ControlTemplate>
+      </Setter>
+    </Style>
+    <Style Selector="RadioButton.BrowserTab:checked">
+      <!-- 选中态：背景色跟下方内容区一致(BackgroundBrush)，制造"连成
+           一体、无缝衔接"的效果——这是浏览器标签页的核心视觉特征。 -->
+      <Setter Property="Background" Value="{StaticResource BackgroundBrush}" />
+      <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+    </Style>
+    <Style Selector="RadioButton.BrowserTab:unchecked">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
+    </Style>
+
+    <!-- 标签内容区：比卡片表面暗一级的"嵌入屏幕"底色，顶部不画圆角
+         （紧贴标签头下沿），只圆左下/右下/右上三个角。 -->
+    <Style Selector="Border.TabBody">
+      <Setter Property="Background" Value="{StaticResource BackgroundBrush}" />
+      <Setter Property="CornerRadius" Value="0,6,6,6" />
+      <Setter Property="Padding" Value="14" />
+    </Style>
+
+    <!--
+      麦克风迷你电平表的 5 个格子。位置固定配色（跟真实音频电平表一样，
+      低位是安全的绿色区，高位是容易爆音的红色区），"点亮/熄灭"由
+      Classes.Active 这个动态类控制——熄灭态统一用 CardBorderBrush
+      （不显眼的深灰），点亮态才显示各自位置该有的颜色。
+    -->
+    <Style Selector="Rectangle.MicSegment">
+      <Setter Property="Width" Value="3" />
+      <Setter Property="Height" Value="10" />
+      <Setter Property="RadiusX" Value="1" />
+      <Setter Property="RadiusY" Value="1" />
+      <Setter Property="Fill" Value="{StaticResource CardBorderBrush}" />
+    </Style>
+    <Style Selector="Rectangle.MicSegment.Green.Active">
+      <Setter Property="Fill" Value="{StaticResource MeterNormalBrush}" />
+    </Style>
+    <Style Selector="Rectangle.MicSegment.Amber.Active">
+      <Setter Property="Fill" Value="{StaticResource AccentBrush}" />
+    </Style>
+    <Style Selector="Rectangle.MicSegment.Red.Active">
+      <Setter Property="Fill" Value="{StaticResource DangerBrush}" />
+    </Style>
+
+
     <!-- 一行"标签在左、控件在右"的布局，三个板块里大量复用这个模式，
          用 Grid 两列而不是每处单独摆放，保持视觉对齐一致。 -->
     <Style Selector="Grid.FieldRow">
       <Setter Property="Margin" Value="0,0,0,14" />
     </Style>
+
+    <!-- API Key 输入框末尾的显隐切换小图标按钮：无边框、悬浮变亮，
+         图标用 Segoe MDL2 Assets（跟窗口最小化/最大化/关闭按钮同一套
+         图标字体，见 MainWindow.axaml）。 -->
+    <Style Selector="Button.ApiKeyToggle">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
+      <Setter Property="FontFamily" Value="Segoe MDL2 Assets" />
+      <Setter Property="FontSize" Value="15" />
+      <Setter Property="Padding" Value="8,0" />
+      <Setter Property="CornerRadius" Value="6" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Button.ApiKeyToggle:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="{StaticResource NavItemHoverBrush}" />
+      <Setter Property="TextBlock.Foreground" Value="{StaticResource TextPrimaryBrush}" />
+    </Style>
   </UserControl.Styles>
 
   <ScrollViewer>
-    <StackPanel Margin="32,24" MaxWidth="640" Spacing="4">
+    <StackPanel Margin="32,24" MaxWidth="900" Spacing="4">
 
       <TextBlock Text="首页"
                  FontSize="25"
                  Foreground="{StaticResource TextSecondaryBrush}"
                  Margin="0,0,0,20" />
 
-      <!-- ===== 语音识别 ===== -->
-      <Border Classes="SettingsCard">
-        <StackPanel>
-          <TextBlock Classes="SectionTitle" Text="语音识别" />
+      <!-- ===== 两列通道条布局 =====
+           左列：AUDIO IN(语音识别) + AUDIO OUT(语音合成) —— 音频处理链路
+           右列：TRANSLATE(翻译) + DISPLAY(字幕) —— 文本处理链路
+           两列各自内部用 Spacing 控制卡片间距，列之间用 Grid 的
+           ColumnSpacing 控制，保证左右列顶部对齐。 -->
+      <!-- 会话运行中，整块设置区域禁用——IsEnabled 绑到 CanEditSettings，
+           Avalonia Fluent 主题会自动把禁用的控件变灰、拦截交互，
+           不需要给每个下拉框/开关/标签页单独处理禁用样式。按最终确定的
+           方案，这里不额外加"已锁定"的提示文案，纯粹靠变灰传达状态。 -->
+      <Grid ColumnDefinitions="*,*" ColumnSpacing="16" IsEnabled="{Binding CanEditSettings}">
 
-          <Grid Classes="FieldRow" ColumnDefinitions="*,Auto">
-            <TextBlock Grid.Column="0" Classes="FieldLabel" Text="识别语言" VerticalAlignment="Center" />
-            <ComboBox Grid.Column="1"
-                      ItemsSource="{Binding RecognitionLanguageOptions}"
-                      SelectedValue="{Binding RecognitionLanguage}"
-                      SelectedValueBinding="{Binding Code}">
-              <ComboBox.ItemTemplate>
-                <DataTemplate x:DataType="vm:LanguageOption">
-                  <TextBlock Text="{Binding DisplayName}" />
-                </DataTemplate>
-              </ComboBox.ItemTemplate>
-            </ComboBox>
-          </Grid>
-          
-          <Grid Classes="FieldRow" ColumnDefinitions="*,Auto">
-            <TextBlock Grid.Column="0" Classes="FieldLabel" Text="模型精度" VerticalAlignment="Center" />
-            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
-              <RadioButton Classes="SegmentButton" GroupName="ModelPrecision"
-                           Content="fp32" IsChecked="{Binding IsFp32Selected}" />
-              <RadioButton Classes="SegmentButton" GroupName="ModelPrecision"
-                           Content="int8" IsChecked="{Binding IsInt8Selected}" />
-            </StackPanel>
-          </Grid>
-          <Grid Classes="FieldRow" ColumnDefinitions="*,Auto">
-          <TextBlock Grid.Column="0" Classes="FieldLabel" Text="输入设备" VerticalAlignment="Center" />
-          <ComboBox Grid.Column="1" Width="240"
-                    ItemsSource="{Binding AudioInputDevices}"
-                    SelectedItem="{Binding SelectedAudioInputDevice}">
-            <ComboBox.ItemTemplate>
-              <DataTemplate x:DataType="audio:AudioInputDeviceOption">
-                <TextBlock Text="{Binding DisplayName}" />
-              </DataTemplate>
-            </ComboBox.ItemTemplate>
-          </ComboBox>
-          </Grid>
+        <!-- ===== 左列：音频链路 ===== -->
+        <StackPanel Grid.Column="0" Spacing="16">
 
-        </StackPanel>
-      </Border>
-
-      <!-- ===== 翻译 ===== -->
-      <Border Classes="SettingsCard">
-        <StackPanel>
-          <TextBlock Classes="SectionTitle" Text="翻译" />
-
-          <Grid Classes="FieldRow" ColumnDefinitions="*,Auto">
-            <TextBlock Grid.Column="0" Classes="FieldLabel" Text="目标语言" VerticalAlignment="Center" />
-            <ComboBox Grid.Column="1"
-                      ItemsSource="{Binding TargetLanguageOptions}"
-                      SelectedValue="{Binding TargetLanguage}"
-                      SelectedValueBinding="{Binding Code}">
-              <ComboBox.ItemTemplate>
-                <DataTemplate x:DataType="vm:LanguageOption">
-                  <TextBlock Text="{Binding DisplayName}" />
-                </DataTemplate>
-              </ComboBox.ItemTemplate>
-            </ComboBox>
-          </Grid>
-
-          <Grid Classes="FieldRow" ColumnDefinitions="*,Auto">
-            <TextBlock Grid.Column="0" Classes="FieldLabel" Text="启用术语表" VerticalAlignment="Center" />
-            <ToggleSwitch Grid.Column="1" IsChecked="{Binding GlossaryEnabled}"
-                          OnContent="{x:Null}" OffContent="{x:Null}" />
-          </Grid>
-          <Grid Classes="FieldRow" ColumnDefinitions="*,Auto">
-            <TextBlock Grid.Column="0" Classes="FieldLabel" Text="翻译提供方" VerticalAlignment="Center" />
-            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
-              <RadioButton Classes="SegmentButton" GroupName="TranslationProvider"
-                           Content="本地" IsChecked="{Binding IsTranslationLocalSelected}" />
-              <RadioButton Classes="SegmentButton" GroupName="TranslationProvider"
-                           Content="API" IsChecked="{Binding IsTranslationApiSelected}" />
-            </StackPanel>
-          </Grid>
-        </StackPanel>
-      </Border>
-
-        <Border Classes="SettingsCard">
-              <StackPanel>
-                <TextBlock Classes="SectionTitle" Text="悬浮字幕" />
-
-                <Grid Classes="FieldRow" ColumnDefinitions="*,Auto">
-                  <TextBlock Grid.Column="0" Classes="FieldLabel" Text="显示字幕" VerticalAlignment="Center" />
-                  <ToggleSwitch Grid.Column="1" IsChecked="{Binding SubtitleEnabled}"
-                                OnContent="{x:Null}" OffContent="{x:Null}" />
-                </Grid>
-
-                <Button Content="解锁字幕（Ctrl+Shift+L 同样有效）"
-                        Command="{Binding UnlockSubtitleCommand}"
-                        Background="{StaticResource NavItemHoverBrush}"
-                        Foreground="{StaticResource TextPrimaryBrush}"
-                        Padding="14,8" CornerRadius="6"
-                        HorizontalAlignment="Left" />
+          <!-- ===== 语音识别 ===== -->
+          <Border Classes="SettingsCard">
+            <StackPanel Spacing="14">
+              <StackPanel Spacing="2">
+                <TextBlock Classes="ChannelEyebrow" Text="AUDIO IN" />
+                <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                  <Ellipse Classes="StatusDot" Classes.Active="{Binding IsSessionRunning}" />
+                  <TextBlock Classes="SectionTitle" Text="语音识别" />
+                </StackPanel>
               </StackPanel>
-            </Border>
 
-      <!-- ===== 语音合成 ===== -->
-      <Border Classes="SettingsCard">
-        <StackPanel>
-          <TextBlock Classes="SectionTitle" Text="语音合成" />
-            <Grid Classes="FieldRow" ColumnDefinitions="*,Auto">
-  <TextBlock Grid.Column="0" Classes="FieldLabel" Text="输出设备" VerticalAlignment="Center" />
-  <ComboBox Grid.Column="1" Width="240"
-            ItemsSource="{Binding AudioOutputDevices}"
-            SelectedItem="{Binding SelectedOutputDevice}">
-    <ComboBox.ItemTemplate>
-      <DataTemplate x:DataType="audio:AudioOutputDeviceOption">
-        <TextBlock Text="{Binding DisplayName}" />
-      </DataTemplate>
-    </ComboBox.ItemTemplate>
-  </ComboBox>
-</Grid>
-          <Grid Classes="FieldRow" ColumnDefinitions="*,Auto">
-          <TextBlock Grid.Column="0" Classes="FieldLabel" Text="语音播报" VerticalAlignment="Center" />
-          <ToggleSwitch Grid.Column="1" IsChecked="{Binding EnableTtsPlayback}"
-                        OnContent="{x:Null}" OffContent="{x:Null}" />
-          </Grid>
+              <Grid Classes="FieldRow" ColumnDefinitions="*,Auto">
+                <TextBlock Grid.Column="0" Classes="FieldLabel" Text="识别语言" VerticalAlignment="Center" />
+                <ComboBox Grid.Column="1"
+                          ItemsSource="{Binding RecognitionLanguageOptions}"
+                          SelectedValue="{Binding RecognitionLanguage}"
+                          SelectedValueBinding="{Binding Code}">
+                  <ComboBox.ItemTemplate>
+                    <DataTemplate x:DataType="vm:LanguageOption">
+                      <TextBlock Text="{Binding DisplayName}" />
+                    </DataTemplate>
+                  </ComboBox.ItemTemplate>
+                </ComboBox>
+              </Grid>
 
-          <Grid Classes="FieldRow" ColumnDefinitions="*,Auto">
-            <TextBlock Grid.Column="0" Classes="FieldLabel" Text="发声角色" VerticalAlignment="Center" />
-            <ComboBox Grid.Column="1"
-                      ItemsSource="{Binding Characters}"
-                      SelectedItem="{Binding SelectedCharacter}">
-              <ComboBox.ItemTemplate>
-                <DataTemplate x:DataType="models:Character">
-                  <TextBlock Text="{Binding Name}" />
-                </DataTemplate>
-              </ComboBox.ItemTemplate>
-            </ComboBox>
-          </Grid>
+              <Grid Classes="FieldRow" ColumnDefinitions="*,Auto">
+                <TextBlock Grid.Column="0" Classes="FieldLabel" Text="模型精度" VerticalAlignment="Center" />
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                  <RadioButton Classes="SegmentButton" GroupName="ModelPrecision"
+                               Content="fp32" IsChecked="{Binding IsFp32Selected}" />
+                  <RadioButton Classes="SegmentButton" GroupName="ModelPrecision"
+                               Content="int8" IsChecked="{Binding IsInt8Selected}" />
+                </StackPanel>
+              </Grid>
 
-          <Grid Classes="FieldRow" ColumnDefinitions="*,Auto">
-            <TextBlock Grid.Column="0" Classes="FieldLabel" Text="合成提供方" VerticalAlignment="Center" />
-            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
-              <RadioButton Classes="SegmentButton" GroupName="TtsProvider"
-                           Content="本地" IsChecked="{Binding IsTtsLocalSelected}" />
-              <RadioButton Classes="SegmentButton" GroupName="TtsProvider"
-                           Content="API" IsChecked="{Binding IsTtsApiSelected}" />
+              <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+                <TextBlock Grid.Column="0" Classes="FieldLabel" Text="输入设备" VerticalAlignment="Center" />
+
+                <!-- 麦克风迷你电平表：5 格固定位置配色（低位绿/中位黄/
+                     高位红），点不点亮由 HomeViewModel.MicLevel 是否超过
+                     对应阈值决定，跟选中的输入设备实时联动——不管有没有
+                     点"开始翻译"都会动，方便开播前先确认这个设备真的有
+                     声音。见 HomeViewModel 里 MicLevel/_micLevelPreviewSource
+                     的注释。 -->
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="2"
+                            VerticalAlignment="Center">
+                  <Rectangle Classes="MicSegment Green" Classes.Active="{Binding IsMicSegment1On}" />
+                  <Rectangle Classes="MicSegment Green" Classes.Active="{Binding IsMicSegment2On}" />
+                  <Rectangle Classes="MicSegment Green" Classes.Active="{Binding IsMicSegment3On}" />
+                  <Rectangle Classes="MicSegment Amber" Classes.Active="{Binding IsMicSegment4On}" />
+                  <Rectangle Classes="MicSegment Red" Classes.Active="{Binding IsMicSegment5On}" />
+                </StackPanel>
+
+                <ComboBox Grid.Column="2" Width="220"
+                          ItemsSource="{Binding AudioInputDevices}"
+                          SelectedItem="{Binding SelectedAudioInputDevice}">
+                  <ComboBox.ItemTemplate>
+                    <DataTemplate x:DataType="audio:AudioInputDeviceOption">
+                      <TextBlock Text="{Binding DisplayName}" />
+                    </DataTemplate>
+                  </ComboBox.ItemTemplate>
+                </ComboBox>
+              </Grid>
             </StackPanel>
-          </Grid>
-        </StackPanel>
-      </Border>
+          </Border>
 
-      <Button Content="开始翻译"
-              Command="{Binding StartTranslationCommand}"
-              Background="{StaticResource AccentBrush}"
-              Foreground="{StaticResource BackgroundBrush}"
-              FontWeight="SemiBold" FontSize="16"
-              Padding="0,14" HorizontalContentAlignment="Center"
-              HorizontalAlignment="Stretch"
-              CornerRadius="8"
-              Margin="0,4,0,32" />
+          <!-- ===== 语音合成 ===== -->
+          <Border Classes="SettingsCard">
+            <StackPanel Spacing="14">
+              <StackPanel Spacing="2">
+                <TextBlock Classes="ChannelEyebrow" Text="AUDIO OUT" />
+                <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                  <Ellipse Classes="StatusDot" Classes.Active="{Binding IsSessionRunning}" />
+                  <TextBlock Classes="SectionTitle" Text="语音合成" />
+                </StackPanel>
+              </StackPanel>
+
+              <Grid Classes="FieldRow" ColumnDefinitions="*,Auto">
+                <TextBlock Grid.Column="0" Classes="FieldLabel" Text="输出设备" VerticalAlignment="Center" />
+                <ComboBox Grid.Column="1" Width="220"
+                          ItemsSource="{Binding AudioOutputDevices}"
+                          SelectedItem="{Binding SelectedOutputDevice}">
+                  <ComboBox.ItemTemplate>
+                    <DataTemplate x:DataType="audio:AudioOutputDeviceOption">
+                      <TextBlock Text="{Binding DisplayName}" />
+                    </DataTemplate>
+                  </ComboBox.ItemTemplate>
+                </ComboBox>
+              </Grid>
+
+              <Grid Classes="FieldRow" ColumnDefinitions="*,Auto">
+                <TextBlock Grid.Column="0" Classes="FieldLabel" Text="语音播报" VerticalAlignment="Center" />
+                <ToggleSwitch Grid.Column="1" IsChecked="{Binding EnableTtsPlayback}"
+                              OnContent="{x:Null}" OffContent="{x:Null}" />
+              </Grid>
+
+              <!-- ===== 合成提供方：浏览器式标签页 =====
+                   标签头本身就是 Provider 选择，不再需要单独一行"合成
+                   提供方"标签+分段按钮。 -->
+              <StackPanel Orientation="Horizontal" Spacing="4" Margin="0,0,0,0">
+                <RadioButton Classes="BrowserTab" GroupName="TtsProvider"
+                             Content="本地" IsChecked="{Binding IsTtsLocalSelected}" />
+                <RadioButton Classes="BrowserTab" GroupName="TtsProvider"
+                             Content="API" IsChecked="{Binding IsTtsApiSelected}" />
+              </StackPanel>
+              <Border Classes="TabBody">
+                <Panel>
+                  <!-- 本地标签内容：发声角色（音色克隆角色）从原来的共享区
+                       挪过来——这个下拉框绑定的是本地 GPT-SoVITS 角色库
+                       （Character 表），只对本地合成有意义，不是"不管选哪
+                       个 Provider 都通用"的字段，放共享区是站不住的，
+                       挪到本地标签下面才对。 -->
+                  <StackPanel Spacing="10" IsVisible="{Binding IsTtsLocalSelected}">
+                    <Grid ColumnDefinitions="*,Auto">
+                      <TextBlock Grid.Column="0" Classes="FieldLabel" Text="发声角色" VerticalAlignment="Center" />
+                      <ComboBox Grid.Column="1" Width="220"
+                                ItemsSource="{Binding Characters}"
+                                SelectedItem="{Binding SelectedCharacter}">
+                        <ComboBox.ItemTemplate>
+                          <DataTemplate x:DataType="models:Character">
+                            <TextBlock Text="{Binding Name}" />
+                          </DataTemplate>
+                        </ComboBox.ItemTemplate>
+                      </ComboBox>
+                    </Grid>
+                  </StackPanel>
+
+                  <!-- API 标签内容：合成模型 + (Azure专属)区域/音色/情绪跟随
+                       + API Key。 -->
+                  <StackPanel Spacing="10" IsVisible="{Binding IsTtsApiSelected}">
+                    <Grid ColumnDefinitions="*,Auto">
+                      <TextBlock Grid.Column="0" Classes="FieldLabel" Text="合成模型" VerticalAlignment="Center" />
+                      <ComboBox Grid.Column="1" Width="220"
+                                ItemsSource="{Binding TtsModelOptions}"
+                                SelectedItem="{Binding SelectedTtsModel}">
+                        <ComboBox.ItemTemplate>
+                          <DataTemplate x:DataType="vm:TtsModelOption">
+                            <TextBlock Text="{Binding DisplayName}" />
+                          </DataTemplate>
+                        </ComboBox.ItemTemplate>
+                      </ComboBox>
+                    </Grid>
+
+                    <!-- 以下几项只在选中 Azure 语音合成时显示。
+                         区域是纯下拉（不可编辑）——这个字段是必填的，
+                         直接拼进请求地址，手滑输错会导致请求直接失败，
+                         所以不像翻译那边的区域字段允许手输，这里只能从
+                         预置列表选（跟翻译区域共用同一份 AzureRegionOptions
+                         集合）。 -->
+                    <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding IsAzureTtsSelected}">
+                      <TextBlock Grid.Column="0" Classes="FieldLabel" Text="区域" VerticalAlignment="Center" />
+                      <ComboBox Grid.Column="1" Width="220"
+                                ItemsSource="{Binding AzureRegionOptions}"
+                                SelectedItem="{Binding TtsApiRegion}"
+                                PlaceholderText="选择区域" />
+                    </Grid>
+
+                    <!-- 英文/中文音色分开两个下拉框——翻译方向决定了
+                         SynthesizeAsync 该用哪种语言朗读，各自配置好
+                         对应语言的音色，不用每次手动切换。现在各自只有
+                         一个选项，是刻意为以后加更多音色预留的列表结构
+                         （见 HomeViewModel 里 EnglishVoiceOptions/
+                         ChineseVoiceOptions 的注释），不是漏掉了别的选项。 -->
+                    <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding IsAzureTtsSelected}">
+                      <TextBlock Grid.Column="0" Classes="FieldLabel" Text="英文音色" VerticalAlignment="Center" />
+                      <ComboBox Grid.Column="1" Width="220"
+                                ItemsSource="{Binding EnglishVoiceOptions}"
+                                SelectedItem="{Binding SelectedEnglishVoice}">
+                        <ComboBox.ItemTemplate>
+                          <DataTemplate x:DataType="vm:TtsVoiceOption">
+                            <TextBlock Text="{Binding DisplayName}" />
+                          </DataTemplate>
+                        </ComboBox.ItemTemplate>
+                      </ComboBox>
+                    </Grid>
+
+                    <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding IsAzureTtsSelected}">
+                      <TextBlock Grid.Column="0" Classes="FieldLabel" Text="中文音色" VerticalAlignment="Center" />
+                      <ComboBox Grid.Column="1" Width="220"
+                                ItemsSource="{Binding ChineseVoiceOptions}"
+                                SelectedItem="{Binding SelectedChineseVoice}">
+                        <ComboBox.ItemTemplate>
+                          <DataTemplate x:DataType="vm:TtsVoiceOption">
+                            <TextBlock Text="{Binding DisplayName}" />
+                          </DataTemplate>
+                        </ComboBox.ItemTemplate>
+                      </ComboBox>
+                    </Grid>
+
+                    <!-- 情绪跟随：只有 Azure 这里需要这个开关——本地
+                         GPT-SoVITS 本来就是按情绪自动选参考音频，没有
+                         "跟不跟随"这个选项存在的意义。 -->
+                    <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding IsAzureTtsSelected}">
+                      <StackPanel Grid.Column="0">
+                        <TextBlock Classes="FieldLabel" Text="情绪跟随" Margin="0" />
+                        <TextBlock Text="开启后按识别到的情绪调整语气，关闭则统一用默认语气朗读"
+                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                   FontSize="11" TextWrapping="Wrap" MaxWidth="200" />
+                      </StackPanel>
+                      <ToggleSwitch Grid.Column="1" IsChecked="{Binding TtsEmotionFollowEnabled}"
+                                    OnContent="{x:Null}" OffContent="{x:Null}"
+                                    VerticalAlignment="Top" />
+                    </Grid>
+
+                    <StackPanel>
+                      <TextBlock Classes="FieldLabel" Text="API Key" />
+                      <Grid ColumnDefinitions="*,Auto">
+                        <TextBox Grid.Column="0" Text="{Binding TtsApiKey}"
+                                 PasswordChar="{Binding TtsApiKeyPasswordChar}"
+                                 PlaceholderText="API Key" />
+                        <Button Grid.Column="1" Classes="ApiKeyToggle"
+                                Content="{Binding TtsApiKeyToggleGlyph}"
+                                Command="{Binding ToggleTtsApiKeyVisibilityCommand}" />
+                      </Grid>
+                    </StackPanel>
+                  </StackPanel>
+                </Panel>
+              </Border>
+            </StackPanel>
+          </Border>
+        </StackPanel>
+
+
+
+        <!-- ===== 右列：文本链路 ===== -->
+        <StackPanel Grid.Column="1" Spacing="16">
+
+          <!-- ===== 翻译 ===== -->
+          <Border Classes="SettingsCard">
+            <StackPanel Spacing="14">
+              <StackPanel Spacing="2">
+                <TextBlock Classes="ChannelEyebrow" Text="TRANSLATE" />
+                <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                  <Ellipse Classes="StatusDot" Classes.Active="{Binding IsSessionRunning}" />
+                  <TextBlock Classes="SectionTitle" Text="翻译" />
+                </StackPanel>
+              </StackPanel>
+
+              <Grid Classes="FieldRow" ColumnDefinitions="*,Auto">
+                <TextBlock Grid.Column="0" Classes="FieldLabel" Text="启用术语表" VerticalAlignment="Center" />
+                <ToggleSwitch Grid.Column="1" IsChecked="{Binding GlossaryEnabled}"
+                              OnContent="{x:Null}" OffContent="{x:Null}" />
+              </Grid>
+
+              <!-- ===== 翻译提供方：浏览器式标签页 ===== -->
+              <StackPanel Orientation="Horizontal" Spacing="4">
+                <RadioButton Classes="BrowserTab" GroupName="TranslationProvider"
+                             Content="本地" IsChecked="{Binding IsTranslationLocalSelected}" />
+                <RadioButton Classes="BrowserTab" GroupName="TranslationProvider"
+                             Content="API" IsChecked="{Binding IsTranslationApiSelected}" />
+              </StackPanel>
+              <Border Classes="TabBody">
+                <Panel>
+                  <!-- 本地标签内容：目标语言从原来的共享区挪过来——本地
+                       OPUS-MT 部署的是 zh<->en 两个方向专用模型，可选范围
+                       是固定死的，跟 API 标签那边"以后能加更多语言"的
+                       TargetLanguage 不是同一个选项列表（虽然绑定的是
+                       同一个 TargetLanguage 设置值，见 HomeViewModel 里
+                       TargetLanguageOptions/ApiTargetLanguageOptions
+                       的注释）。 -->
+                  <StackPanel Spacing="10" IsVisible="{Binding IsTranslationLocalSelected}">
+                    <Grid ColumnDefinitions="*,Auto">
+                      <TextBlock Grid.Column="0" Classes="FieldLabel" Text="目标语言" VerticalAlignment="Center" />
+                      <ComboBox Grid.Column="1"
+                                ItemsSource="{Binding TargetLanguageOptions}"
+                                SelectedValue="{Binding TargetLanguage}"
+                                SelectedValueBinding="{Binding Code}">
+                        <ComboBox.ItemTemplate>
+                          <DataTemplate x:DataType="vm:LanguageOption">
+                            <TextBlock Text="{Binding DisplayName}" />
+                          </DataTemplate>
+                        </ComboBox.ItemTemplate>
+                      </ComboBox>
+                    </Grid>
+                  </StackPanel>
+
+                  <!-- API 标签内容：目标语言 + 翻译服务商 + (Azure专属)区域
+                       + API Key。目标语言放在最上面，是因为它是"要做
+                       什么"这一层的参数，服务商/区域/Key 是"怎么做"这
+                       一层，顺序上更自然。 -->
+                  <StackPanel Spacing="10" IsVisible="{Binding IsTranslationApiSelected}">
+                    <Grid ColumnDefinitions="*,Auto">
+                      <TextBlock Grid.Column="0" Classes="FieldLabel" Text="目标语言" VerticalAlignment="Center" />
+                      <ComboBox Grid.Column="1"
+                                ItemsSource="{Binding ApiTargetLanguageOptions}"
+                                SelectedValue="{Binding TargetLanguage}"
+                                SelectedValueBinding="{Binding Code}">
+                        <ComboBox.ItemTemplate>
+                          <DataTemplate x:DataType="vm:LanguageOption">
+                            <TextBlock Text="{Binding DisplayName}" />
+                          </DataTemplate>
+                        </ComboBox.ItemTemplate>
+                      </ComboBox>
+                    </Grid>
+
+                    <!-- 标签从"翻译模型"改成"翻译服务商"——这个下拉框
+                         选的其实是服务商（DeepSeek/豆包这类大模型 vs
+                         Azure 这类专用翻译引擎），Azure 根本没有"模型"
+                         这个概念，继续叫"翻译模型"不准确。 -->
+                    <Grid ColumnDefinitions="*,Auto">
+                      <TextBlock Grid.Column="0" Classes="FieldLabel" Text="翻译服务商" VerticalAlignment="Center" />
+                      <ComboBox Grid.Column="1" Width="220"
+                                ItemsSource="{Binding TranslationModelOptions}"
+                                SelectedItem="{Binding SelectedTranslationModel}">
+                        <ComboBox.ItemTemplate>
+                          <DataTemplate x:DataType="vm:TranslationModelOption">
+                            <TextBlock Text="{Binding DisplayName}" />
+                          </DataTemplate>
+                        </ComboBox.ItemTemplate>
+                      </ComboBox>
+                    </Grid>
+
+                    <!-- 区域：只有选中 Azure 翻译时才显示，DeepSeek/豆包
+                         没有这个概念。IsEditable="True" 让这个下拉框既能
+                         从预置的常见区域里选，也能直接手打——Azure 的
+                         区域列表会变，预置几个常见的做快捷方式就够了，
+                         不在列表里的区域用户自己输入。 -->
+                    <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding IsAzureTranslationSelected}">
+                      <TextBlock Grid.Column="0" Classes="FieldLabel" Text="区域（选填）" VerticalAlignment="Center" />
+                      <ComboBox Grid.Column="1" Width="220"
+                                IsEditable="True"
+                                ItemsSource="{Binding AzureRegionOptions}"
+                                Text="{Binding TranslationApiRegion}"
+                                PlaceholderText="例如 westus2" />
+                    </Grid>
+
+                    <StackPanel>
+                      <TextBlock Classes="FieldLabel" Text="API Key" />
+                      <Grid ColumnDefinitions="*,Auto">
+                        <TextBox Grid.Column="0" Text="{Binding TranslationApiKey}"
+                                 PasswordChar="{Binding TranslationApiKeyPasswordChar}"
+                                 PlaceholderText="API Key" />
+                        <Button Grid.Column="1" Classes="ApiKeyToggle"
+                                Content="{Binding TranslationApiKeyToggleGlyph}"
+                                Command="{Binding ToggleTranslationApiKeyVisibilityCommand}" />
+                      </Grid>
+                    </StackPanel>
+                  </StackPanel>
+                </Panel>
+              </Border>
+            </StackPanel>
+          </Border>
+
+          <!-- ===== 悬浮字幕 ===== -->
+          <Border Classes="SettingsCard">
+            <StackPanel Spacing="14">
+              <StackPanel Spacing="2">
+                <TextBlock Classes="ChannelEyebrow" Text="DISPLAY" />
+                <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                  <Ellipse Classes="StatusDot" Classes.Active="{Binding IsSessionRunning}" />
+                  <TextBlock Classes="SectionTitle" Text="悬浮字幕" />
+                </StackPanel>
+              </StackPanel>
+
+              <Grid Classes="FieldRow" ColumnDefinitions="*,Auto">
+                <TextBlock Grid.Column="0" Classes="FieldLabel" Text="显示字幕" VerticalAlignment="Center" />
+                <ToggleSwitch Grid.Column="1" IsChecked="{Binding SubtitleEnabled}"
+                              OnContent="{x:Null}" OffContent="{x:Null}" />
+              </Grid>
+
+              <Button Content="解锁字幕（Ctrl+Shift+L 同样有效）"
+                      Command="{Binding UnlockSubtitleCommand}"
+                      Background="{StaticResource NavItemHoverBrush}"
+                      Foreground="{StaticResource TextPrimaryBrush}"
+                      Padding="14,8" CornerRadius="6"
+                      HorizontalAlignment="Left" />
+            </StackPanel>
+          </Border>
+        </StackPanel>
+      </Grid>
+
+      <!-- 启动/停止按钮：运行中和未运行是两个视觉上完全不同的按钮
+           （颜色、文字都不一样），用 Panel 叠放 + IsVisible 互斥来做，
+           而不是同一个按钮动态换文字/换色——这样两种状态的样式可以
+           完全独立地调，不用互相牵扯着改同一份 Setter。
+           这两颗按钮本身不受 CanEditSettings 影响，一直可点——运行中
+           需要能点停止，不运行需要能点开始，这是唯一两个"任何时候都不
+           该被锁住"的交互元素。 -->
+      <Panel Margin="0,20,0,32">
+        <!-- 未运行：强调色"开始翻译"，整个视觉改版里唯一允许"张扬"的
+             地方。比普通按钮更高（18 上下内边距），阴影更明显，模拟
+             物理面板上大号启动按键的质感。 -->
+        <Button Content="开 始 翻 译"
+                Command="{Binding StartTranslationCommand}"
+                IsVisible="{Binding !IsSessionRunning}"
+                Background="{StaticResource AccentBrush}"
+                Foreground="{StaticResource BackgroundBrush}"
+                FontWeight="SemiBold" FontSize="16"
+                Padding="0,18" HorizontalContentAlignment="Center"
+                HorizontalAlignment="Stretch"
+                CornerRadius="8">
+          <Button.Effect>
+            <DropShadowEffect Color="{StaticResource AccentColor}"
+                               BlurRadius="24" OffsetX="0" OffsetY="4"
+                               Opacity="0.35" />
+          </Button.Effect>
+        </Button>
+
+        <!-- 运行中：红色"停止翻译"，点了直接停止（不跳转页面）。
+             之前点了开始之后主页按钮没反应，就是因为点击会立刻跳转到
+             "实时翻译"页面，根本看不到这颗按钮——现在不管在不在首页，
+             只要会话在运行，这里都会正确显示成停止状态。 -->
+        <Button Content="停 止 翻 译"
+                Command="{Binding StopTranslationCommand}"
+                IsVisible="{Binding IsSessionRunning}"
+                Background="{StaticResource DangerBrush}"
+                Foreground="{StaticResource TextPrimaryBrush}"
+                FontWeight="SemiBold" FontSize="16"
+                Padding="0,18" HorizontalContentAlignment="Center"
+                HorizontalAlignment="Stretch"
+                CornerRadius="8" />
+      </Panel>
 
     </StackPanel>
   </ScrollViewer>

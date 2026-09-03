@@ -10,6 +10,7 @@
   <ItemGroup>
     <AvaloniaResource Include="Assets\**" />
     <Folder Include="Services\SenseVoice\Recognition\" />
+    <Folder Include="Services\Dialogs\" />
     <Folder Include="Settings\" />
   </ItemGroup>
 

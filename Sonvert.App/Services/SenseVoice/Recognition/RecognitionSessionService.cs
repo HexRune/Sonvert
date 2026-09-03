@@ -33,6 +33,11 @@ public class RecognitionResultEventArgs : EventArgs
     public string? Event { get; init; }
     public float[] AudioSamples { get; init; } = Array.Empty<float>();
     public int SampleRate { get; init; }
+
+    /// <summary>这句话从交给 SenseVoice 识别到识别结果返回，耗费的毫秒数
+    /// ——只测这一段 HTTP 调用本身的时间，不包含 VAD 切分等前置步骤。
+    /// 落进历史记录用于以后统计对比（见 HistoryEntry.AsrLatencyMs）。</summary>
+    public int AsrLatencyMs { get; init; }
 }
 
 public interface IRecognitionSessionService : IAsyncDisposable
@@ -41,6 +46,15 @@ public interface IRecognitionSessionService : IAsyncDisposable
     /// 如果调用方要更新 UI，记得自己切回 UI 线程（Avalonia 的
     /// Dispatcher.UIThread.Post），这里不负责帮你切。</summary>
     event EventHandler<RecognitionResultEventArgs>? ResultReceived;
+
+    /// <summary>每收到一批新的麦克风采样就触发一次（对应 IAudioInputSource.
+    /// DataAvailable 的频率，大约每 100ms 一次），携带的是这批采样算出来的
+    /// [0,1] 电平值——给主窗口顶部横幅栏那条运行中的音轨波形用。
+    /// 跟 ResultReceived 一样，在后台采集线程上触发，UI 更新要自己切线程。
+    /// 这是一个独立的、比"识别出一句话"更高频的信号：识别结果是"断句之后
+    /// 才有"，电平是"只要在录音就一直有"，两者触发时机和用途都不同，
+    /// 所以不复用同一个事件，单独开一个。</summary>
+    event EventHandler<double>? LevelChanged;
 
     /// <summary>开始录音+识别。会先确保 SenseVoiceService 子进程已启动
     /// 并加载好模型（如果还没有的话），然后开始麦克风采集。</summary>
@@ -72,6 +86,8 @@ public class RecognitionSessionService : IRecognitionSessionService
     private bool _isRunning;
 
     public event EventHandler<RecognitionResultEventArgs>? ResultReceived;
+
+    public event EventHandler<double>? LevelChanged;
 
     public RecognitionSessionService(
         ISettingsService settingsService,
@@ -152,6 +168,11 @@ public class RecognitionSessionService : IRecognitionSessionService
 
     private void OnAudioDataAvailable(object? sender, float[] samples)
     {
+        // 电平计算跟下面的 VAD/断句逻辑完全独立——电平只是"这批采样有多
+        // 响"，不需要经过 VAD 判断是不是语音段，每一批数据来了就直接算、
+        // 直接抛事件，所以放在最前面，不受下面 VAD 处理路径影响。
+        LevelChanged?.Invoke(this, Sonvert.App.Services.Audio.AudioLevelCalculator.CalculateLevel(samples));
+
         _vad!.AcceptWaveform(samples);
 
         while (!_vad.IsEmpty())
@@ -194,7 +215,10 @@ public class RecognitionSessionService : IRecognitionSessionService
                 // Python 端测试脚本里的转换逻辑保持一致（四舍五入，不是
                 // 直接截断，避免引入量化偏差）。
                 var pcmBytes = ToPcm16Bytes(samples);
+
+                var stopwatch = System.Diagnostics.Stopwatch.StartNew();
                 var result = await _senseVoiceService.RecognizeAsync(pcmBytes, _settingsService.Current.RecognitionLanguage);
+                stopwatch.Stop();
 
                 if (!string.IsNullOrEmpty(result.Text))
                 {
@@ -206,6 +230,7 @@ public class RecognitionSessionService : IRecognitionSessionService
                         Event = result.Event,
                         AudioSamples = samples,
                         SampleRate = SampleRate,
+                        AsrLatencyMs = (int)stopwatch.ElapsedMilliseconds,
                     });
                 }
             }

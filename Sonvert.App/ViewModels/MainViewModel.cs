@@ -21,6 +21,7 @@ public partial class MainViewModel : ViewModelBase
     private readonly SettingsViewModel _settingsViewModel;
     private readonly HomeViewModel _homeViewModel;
     private readonly VoiceCloningViewModel _voiceCloningViewModel;
+    private readonly AboutViewModel _aboutViewModel;
 
     private readonly HistoryViewModel _historyViewModel;
 
@@ -32,6 +33,7 @@ public partial class MainViewModel : ViewModelBase
         new NavItem { Title = "发声角色" },
         new NavItem { Title = "历史记录" },
         new NavItem { Title = "设置" },
+        new NavItem { Title = "关于" },
     };
 
     [ObservableProperty]
@@ -47,23 +49,35 @@ public partial class MainViewModel : ViewModelBase
     private object? _currentPage;
 
     /// <summary>
-    /// 翻译会话是否正在运行——顶部"正在监听麦克风..."状态栏和"停止"按钮
-    /// 是否显示，看的是这个，不是"当前在哪个页面"，因为切页面不会停止
-    /// 后台运行的会话。这里直接把 LiveTranslationViewModel.IsRunning
-    /// 透传出来，而不是自己维护一份独立状态，避免两处状态不同步。
+    /// 翻译会话是否正在运行——顶部状态栏和"停止"按钮是否显示，看的是这个，
+    /// 不是"当前在哪个页面"，因为切页面不会停止后台运行的会话。这里直接
+    /// 把 LiveTranslationViewModel.IsRunning 透传出来，而不是自己维护一份
+    /// 独立状态，避免两处状态不同步。
     /// </summary>
     public bool IsSessionActive => _liveTranslationViewModel.IsRunning;
+
+    /// <summary>暴露给 MainWindow.axaml 顶部横幅栏绑定用——那条栏的电平
+    /// 指示直接用 LiveTranslationViewModel.IsLevelSegmentNOn 这组属性
+    /// 驱动（跟首页麦克风旁边的迷你电平表是同一套"位置固定配色"设计，
+    /// 只是格子更多更大），不需要 MainViewModel 这边再单独维护一份
+    /// 转发属性或者历史数据——直接在 XAML 里用嵌套路径
+    /// "{Binding LiveTranslation.IsLevelSegment1On}" 这种写法绑定，
+    /// Avalonia 的绑定引擎会正确处理链路上 LiveTranslationViewModel 自己
+    /// 触发的 PropertyChanged 通知，不需要额外转发。</summary>
+    public LiveTranslationViewModel LiveTranslation => _liveTranslationViewModel;
 
     public MainViewModel(LiveTranslationViewModel liveTranslationViewModel,
         SettingsViewModel settingsViewModel,
         HomeViewModel homeViewModel,
         VoiceCloningViewModel voiceCloningViewModel,
+        AboutViewModel aboutViewModel,
         HistoryViewModel historyViewModel)
     {
         _liveTranslationViewModel = liveTranslationViewModel;
         _settingsViewModel = settingsViewModel;
         _homeViewModel = homeViewModel;
         _voiceCloningViewModel = voiceCloningViewModel;
+        _aboutViewModel = aboutViewModel;
 
         _homeViewModel.StartTranslationRequested += OnStartTranslationRequested;
 
@@ -103,6 +117,7 @@ public partial class MainViewModel : ViewModelBase
             "设置" => _settingsViewModel,
             "实时翻译" => _liveTranslationViewModel,
             "声音克隆" => _voiceCloningViewModel,
+            "关于" => _aboutViewModel,
             "历史记录" => RefreshAndGetHistoryViewModel(),
             _ => null, // 其他页面还没搭，先显示占位
         };

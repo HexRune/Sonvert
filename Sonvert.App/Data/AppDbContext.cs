@@ -12,11 +12,11 @@ namespace Sonvert.App.Data;
 /// 存储模式，不是各自发明了一套。选相对路径而不是绝对路径，是为了让
 /// 整个 AppData\Sonvert 目录可以被用户整体搬家/备份而不失效。
 ///
-/// 当前用 EnsureCreated() 建表（见 App.axaml.cs），没有引入正式的
-/// EF Core Migrations——这意味着"新增一张表"没问题（这次的 HistoryEntries
-/// 就是新增的），但"修改一张已经建过的表的结构"不会被 EnsureCreated
-/// 自动应用到已存在的数据库文件上。现在项目还在快速迭代阶段，这个限制
-/// 先记在这里，等表结构不再频繁变动时应该换成正式的 Migrations。
+/// 数据库结构变化通过 EF Core Migrations 管理（Migrations 文件夹），
+/// App.axaml.cs 里调用 db.Database.Migrate() 应用——从这次给
+/// CharacterEmotionClips 加 Language 列开始，正式改成 Migrate()（之前
+/// 一直是 EnsureCreated()，虽然 Migrations 文件夹早就有了，但那行代码
+/// 没跟着切换，历史细节和处理办法见 App.axaml.cs 的 MigrateDatabase 方法）。
 /// </summary>
 public class AppDbContext : DbContext
 {

@@ -91,11 +91,25 @@
           <TextBlock Classes="FieldLabel" Text="工作目录" />
           <TextBox Text="{Binding MtWorkingDirectory}" />
 
+          <!--
+            第三方大模型翻译 API 配置区。
+            这三项之前是占位状态（IsEnabled="False"），因为当时
+            ApiTranslationService 还没实现，填了也用不上；
+            现在 ApiTranslationService 已经实现了 OpenAI 兼容协议的
+            调用逻辑，所以这里正式启用输入框。
+
+            填写规则（详见 ApiTranslationService.cs 顶部注释）：
+            - Endpoint 填到版本号为止的 base url，不要带 /chat/completions，
+              例如 DeepSeek: https://api.deepseek.com/v1
+                   豆包(火山方舟): https://ark.cn-beijing.volces.com/api/v3
+            - Model 填服务商那边的具体模型 ID（豆包需要先在控制台开通对应
+              模型才能拿到 ID，不是随便填一个名字）
+          -->
           <TextBlock Classes="FieldLabel"
-                     Text="第三方 API（尚未接入，先占位）" />
-          <TextBox Text="{Binding TranslationApiEndpoint}" Watermark="API 地址" IsEnabled="False" Margin="0,0,0,6" />
-          <TextBox Text="{Binding TranslationApiKey}" Watermark="API Key" IsEnabled="False" PasswordChar="*" Margin="0,0,0,6" />
-          <TextBox Text="{Binding TranslationApiModel}" Watermark="模型名" IsEnabled="False" />
+                     Text="第三方 API（OpenAI 兼容协议，如 DeepSeek / 豆包 / OpenAI）" />
+          <TextBox Text="{Binding TranslationApiEndpoint}" Watermark="API 地址，如 https://api.deepseek.com/v1" Margin="0,0,0,6" />
+          <TextBox Text="{Binding TranslationApiKey}" Watermark="API Key" PasswordChar="*" Margin="0,0,0,6" />
+          <TextBox Text="{Binding TranslationApiModel}" Watermark="模型名，如 deepseek-chat" />
         </StackPanel>
       </Border>
 

@@ -1,0 +1,30 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="Sonvert.App.Views.ConfirmationDialog"
+        Width="360" SizeToContent="Height"
+        CanResize="False"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        Background="{StaticResource BackgroundBrush}"
+        RequestedThemeVariant="Dark">
+
+  <!-- 通用的"确定/取消"确认弹窗，专门用在破坏性操作之前——确认按钮用
+       DangerBrush（红色）而不是 AccentBrush，跟"这个操作有去无回"的
+       严重程度对上，不用文字之外还能一眼看出这是个需要谨慎点的按钮。 -->
+  <StackPanel Margin="20" Spacing="14">
+    <TextBlock x:Name="MessageText"
+               Foreground="{StaticResource TextSecondaryBrush}"
+               FontSize="13" TextWrapping="Wrap" />
+
+    <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+      <Button x:Name="CancelButton" Content="取消"
+              Background="{StaticResource NavItemHoverBrush}"
+              Foreground="{StaticResource TextPrimaryBrush}"
+              Padding="16,7" CornerRadius="6" />
+      <Button x:Name="ConfirmButton" Content="确定"
+              Background="{StaticResource DangerBrush}"
+              Foreground="{StaticResource TextPrimaryBrush}"
+              Padding="16,7" CornerRadius="6" />
+    </StackPanel>
+  </StackPanel>
+</Window>

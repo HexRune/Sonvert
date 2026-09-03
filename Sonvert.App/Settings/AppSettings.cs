@@ -101,6 +101,22 @@ public class AppSettings
     public string TranslationApiKey { get; set; } = string.Empty;
     public string TranslationApiModel { get; set; } = string.Empty;
 
+    /// <summary>标识当前选中的 API 翻译服务走哪种协议——"openai_compatible"
+    /// （DeepSeek/豆包这类走 Chat Completions 协议的大模型）或者
+    /// "azure"（Azure Translator，专用翻译协议，完全不同的请求/响应
+    /// 格式）。TranslationRouter 靠这个字段在 ApiTranslationService 和
+    /// AzureTranslationService 之间再选一次（TranslationProvider 只能
+    /// 区分"本地/API"这一层，选了 API 之后具体走哪个协议由这个字段决定）。
+    /// 用户不需要直接接触这个字段，选翻译服务商下拉框时跟着一起写入。</summary>
+    public string TranslationApiKind { get; set; } = "openai_compatible";
+
+    /// <summary>Azure Translator 专属——对应请求头 Ocp-Apim-Subscription-Region。
+    /// 官方文档说单服务全局资源不需要这个，但多服务/区域性资源必须带，
+    /// 具体要不要填取决于用户创建的是哪种资源，所以做成选填，不做强校验
+    /// ——留空就不加这个请求头，真要漏填了 Azure 会返回鉴权失败，
+    /// 错误信息里能看出来，不需要在客户端提前拦。</summary>
+    public string TranslationApiRegion { get; set; } = string.Empty;
+
     private static string DefaultDevMTWorkingDirectory() => Path.GetFullPath(
         Path.Combine(AppContext.BaseDirectory, @"..\..\..\..\Sonvert.MTService"));
 
@@ -119,6 +135,32 @@ public class AppSettings
     public string TTSApiEndpoint { get; set; } = string.Empty;
     public string TTSApiKey { get; set; } = string.Empty;
     public string TTSApiModel { get; set; } = string.Empty;
+
+    /// <summary>标识当前选中的 API 语音合成服务走哪种协议——目前只有
+    /// "azure"这一个真正实现了；其余占位选项（跳跃语音/火山引擎）选中时
+    /// 这个字段还是空字符串，TtsRouter 遇到空值会转发给 ApiTtsService
+    /// （它对这些占位选项直接抛 NotImplementedException，见该类注释）。
+    /// 跟 TranslationApiKind 是同样的设计目的：一个"API"大类下可能有
+    /// 协议完全不同的具体实现，需要再细分一层路由。</summary>
+    public string TTSApiKind { get; set; } = string.Empty;
+
+    /// <summary>Azure 语音合成专属——区域，直接拼进请求地址
+    /// （https://{region}.tts.speech.microsoft.com/...），必填，不像
+    /// 翻译那边的区域是选填的。</summary>
+    public string TTSApiRegion { get; set; } = string.Empty;
+
+    /// <summary>Azure 语音合成专属——英文/中文各自选中的音色 ID
+    /// （比如 "en-US-JennyNeural"）。分两个字段而不是一个，是因为
+    /// SynthesizeAsync 的 language 参数决定了这一句该用哪种语言朗读，
+    /// 需要各自配置好对应语言的音色，不用每次翻译方向变了手动切换。</summary>
+    public string TTSApiVoiceEn { get; set; } = string.Empty;
+    public string TTSApiVoiceZh { get; set; } = string.Empty;
+
+    /// <summary>Azure 语音合成专属——是否按 SenseVoice 识别到的情绪调整
+    /// 朗读语气（SSML mstts:express-as style）。关闭时统一用默认语气，
+    /// 不传 style 标签。默认关闭，避免用户第一次接入时因为不了解这个
+    /// 功能突然听到风格化的朗读感到意外。</summary>
+    public bool TTSEmotionFollowEnabled { get; set; } = false;
 
     // ---- 角色（声音克隆）----
 

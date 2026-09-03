@@ -6,28 +6,69 @@
              x:Class="Sonvert.App.Views.LiveTranslationView"
              x:DataType="vm:LiveTranslationViewModel">
 
-  <Grid RowDefinitions="Auto,Auto,*" Margin="24">
+  <Grid RowDefinitions="Auto,*" Margin="24">
 
-    <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="12">
-      <Button Content="开始识别"
-              Command="{Binding StartCommand}"
-              IsVisible="{Binding !IsRunning}"
-              Background="{StaticResource AccentBrush}"
-              Foreground="{StaticResource TextPrimaryBrush}"
-              Padding="20,8" CornerRadius="6" />
-    </StackPanel>
-
-    <TextBlock Grid.Row="1"
+    <TextBlock Grid.Row="0"
                Text="{Binding ErrorMessage}"
                IsVisible="{Binding ErrorMessage, Converter={x:Static conv:StringConverters.IsNotNullOrEmpty}}"
                Foreground="{StaticResource DangerBrush}"
-               Margin="0,12,0,0"
+               Margin="0,0,0,12"
                TextWrapping="Wrap" />
 
-    <!-- 识别结果列表：每一条用 Grid 分两栏——左边原文+译文纵向堆叠，
-         限制最大宽度、超出自动换行；右边单独一小块放情绪/场景标签，
-         宽度固定，不会被左边的长文本挤压掉。 -->
-    <ScrollViewer Grid.Row="2" Margin="0,16,0,0">
+    <!-- 未开始翻译时的提示：这个页面本身不再有"开始识别"按钮——启动
+         入口统一收敛到首页的"开始翻译"按钮，这里只负责展示结果，
+         避免同一个操作在两个地方都能触发、状态还要两边同步的麻烦
+         （之前首页按钮点击后没反应就是因为这类"多入口"设计埋的坑，
+         见 HomeViewModel 里 IsSessionRunning 的注释）。
+         绑定的是 IsIdle 而不是 !IsRunning——见 ViewModel 里 IsIdle 的
+         注释，直接用 !IsRunning 会导致点击开始翻译、页面跳转过来后，
+         这条提示还会在服务加载期间多停留一会儿，看起来像点击没反应。 -->
+    <StackPanel Grid.Row="1"
+                IsVisible="{Binding IsIdle}"
+                VerticalAlignment="Center" HorizontalAlignment="Center"
+                Spacing="8">
+      <TextBlock Text="还没有开始翻译"
+                 Foreground="{StaticResource TextPrimaryBrush}"
+                 FontSize="16" HorizontalAlignment="Center" />
+      <TextBlock Text="前往「首页」点击「开始翻译」即可在这里看到识别结果"
+                 Foreground="{StaticResource TextSecondaryBrush}"
+                 FontSize="13" HorizontalAlignment="Center" />
+    </StackPanel>
+
+    <!-- 加载中：从点击"开始翻译"到 IsRunning 真正变 true 之间那段
+         空窗期（识别会话/翻译服务/语音合成陆续启动、加载模型，视配置
+         和硬件情况可能要几秒钟）。绑定 StartCommand.IsRunning——这是
+         [RelayCommand] 生成的 AsyncRelayCommand 自带的属性，命令方法
+         执行期间自动为 true，不需要额外自己维护一个"是否在加载"的状态。
+         用不确定进度条（IsIndeterminate）而不是假装有具体百分比：
+         识别会话启动、翻译模型加载、语音合成预热这几步各自耗时不固定，
+         也没有细粒度的进度回报，做一个假的百分比反而会误导用户。 -->
+    <StackPanel Grid.Row="1"
+                IsVisible="{Binding StartCommand.IsRunning}"
+                VerticalAlignment="Center" HorizontalAlignment="Center"
+                Spacing="12" MinWidth="240">
+      <ProgressBar IsIndeterminate="True" Height="4" />
+      <TextBlock Text="正在启动翻译服务，请稍候…"
+                 Foreground="{StaticResource TextSecondaryBrush}"
+                 FontSize="13" HorizontalAlignment="Center" />
+    </StackPanel>
+
+    <!-- 识别结果列表：只在运行中显示（IsRunning）——停止之后回到这个
+         页面，看到的应该是"还没开始翻译"这个提示，而不是上一次运行
+         残留的结果列表，跟上面的提示是互斥的两种状态。
+
+         每一条结果用 Grid 分两栏——左边原文+译文纵向堆叠，限制最大宽度、
+         超出自动换行；右边单独一小块放情绪/场景标签，宽度固定，
+         不会被左边的长文本挤压掉。
+
+         ScrollViewer 加了 Padding="0,0,20,0"：Avalonia 默认的滚动条是
+         悬浮在内容区域上层的"覆盖式"滚动条，不会主动让出空间——鼠标移到
+         滚动条上时它还会变粗，如果内容右边缘紧贴 ScrollViewer 边缘，
+         右栏的情绪/场景文字就会被滚动条盖住（之前反馈的问题）。
+         这里给 ScrollViewer 本身留出 20px 的右侧内边距，让内容整体往左
+         挪一点，滚动条悬浮的时候盖住的是这段空白区域，不会再挡住文字。 -->
+    <ScrollViewer Grid.Row="1" Margin="0,16,0,0" Padding="0,0,20,0"
+                  IsVisible="{Binding IsRunning}">
       <ItemsControl ItemsSource="{Binding Results}">
         <ItemsControl.ItemTemplate>
           <DataTemplate x:DataType="models:RecognitionResultItem">
@@ -50,17 +91,36 @@
                              TextWrapping="Wrap" />
                 </StackPanel>
 
-                <!-- 右栏：情绪 + 场景，固定宽度的一小块区域，
-                     跟左边的文本长度完全无关，不会被压缩。 -->
+                <!-- 右栏：情绪 + 场景 + 总延迟，固定宽度的一小块区域，
+                     跟左边的文本长度完全无关，不会被压缩。
+                     显示的是 EmotionDisplay/EventDisplay 这两个翻译成
+                     中文的展示属性，不是 SenseVoice 原样返回的英文标签
+                     （Emotion/Event）——EventDisplay 在场景是"正常说话"
+                     （最常见情况）时会是 null，这一行自然显示空白，
+                     只有真正出现背景音乐/掌声/笑声这些值得注意的场景
+                     才会显示出来。
+
+                     TotalLatencyDisplay 是这句话"从交给 SenseVoice 识别
+                     到语音合成完毕"的端到端总耗时，小字号、跟情绪/场景
+                     一样用 TextSecondaryBrush——纯粹是"有兴趣可以瞄一眼"
+                     的辅助信息，不是主要内容。这个数字会随着翻译/合成
+                     逐步完成而变化（先只有识别这一段，翻译完再加一段，
+                     合成完再加一段），不是一开始就显示最终值，这是
+                     RecognitionResultItem.TotalLatencyMs 的计算属性
+                     自动带出来的效果，这里不需要额外处理。 -->
                 <StackPanel Grid.Column="1" Spacing="4" Width="90"
                             Margin="16,0,0,0" HorizontalAlignment="Right">
-                  <TextBlock Text="{Binding Emotion}"
+                  <TextBlock Text="{Binding EmotionDisplay}"
                              Foreground="{StaticResource TextSecondaryBrush}"
                              FontSize="12"
                              HorizontalAlignment="Right" />
-                  <TextBlock Text="{Binding Event}"
+                  <TextBlock Text="{Binding EventDisplay}"
                              Foreground="{StaticResource TextSecondaryBrush}"
                              FontSize="12"
+                             HorizontalAlignment="Right" />
+                  <TextBlock Text="{Binding TotalLatencyDisplay}"
+                             Foreground="{StaticResource TextSecondaryBrush}"
+                             FontSize="11"
                              HorizontalAlignment="Right" />
                 </StackPanel>
 

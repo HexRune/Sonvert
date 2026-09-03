@@ -16,7 +16,8 @@ public interface IHistoryRepository
 
     /// <summary>写入一条历史记录：负责把两段音频落盘（translatedAudioWav
     /// 传 null 表示这句话没有合成出语音，比如翻译/合成失败，或者根本
-    /// 不需要翻译）、生成不重名的文件名、再把元数据写进数据库。</summary>
+    /// 不需要翻译）、生成不重名的文件名、再把元数据写进数据库。
+    /// 三个延迟参数各自可空——含义见 HistoryEntry 里对应字段的注释。</summary>
     Task AddAsync(
         DateTime timestamp,
         string sourceText,
@@ -26,7 +27,10 @@ public interface IHistoryRepository
         int? characterId,
         string? targetLanguage,
         byte[] sourceAudioWav,
-        byte[]? translatedAudioWav);
+        byte[]? translatedAudioWav,
+        int? asrLatencyMs,
+        int? translationLatencyMs,
+        int? ttsLatencyMs);
 
     /// <summary>删除单条记录——连同它指向的一或两个音频文件一起删。</summary>
     Task DeleteEntryAsync(int id);

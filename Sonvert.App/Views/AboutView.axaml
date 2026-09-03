@@ -1,0 +1,161 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Sonvert.App.ViewModels"
+             x:Class="Sonvert.App.Views.AboutView"
+             x:DataType="vm:AboutViewModel">
+
+  <UserControl.Styles>
+    <!-- "需署名"/"建议致谢"标签——跟声音克隆页"必需/可选"是同一套视觉
+       语言（强调色 vs 中性色），这里独立复制了一份样式，没有跟声音
+       克隆页共用资源，原因跟之前 BrowserTab 样式重复的处理方式一样：
+       两个页面各自独立维护，不去动已经调好的页面。 -->
+    <Style Selector="Border.RequirementTag">
+      <Setter Property="CornerRadius" Value="4" />
+      <Setter Property="Padding" Value="6,1" />
+    </Style>
+    <Style Selector="Border.RequirementTag.Required">
+      <Setter Property="Background" Value="{StaticResource AccentSubtleBrush}" />
+    </Style>
+    <Style Selector="Border.RequirementTag.Optional">
+      <Setter Property="Background" Value="{StaticResource NavItemHoverBrush}" />
+    </Style>
+    <Style Selector="TextBlock.RequirementTagText">
+      <Setter Property="FontSize" Value="11" />
+    </Style>
+    <Style Selector="Border.RequirementTag.Required TextBlock.RequirementTagText">
+      <Setter Property="Foreground" Value="{StaticResource AccentBrush}" />
+    </Style>
+    <Style Selector="Border.RequirementTag.Optional TextBlock.RequirementTagText">
+      <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
+    </Style>
+
+    <!-- 组件名做成可点击的链接样式——下划线+鼠标悬停变色，暗示"这个能点"，
+         不需要额外画一个按钮外框，跟纯文本区分开就够了。 -->
+    <Style Selector="Button.LinkButton">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="Cursor" Value="Hand" />
+    </Style>
+    <Style Selector="Button.LinkButton:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="Transparent" />
+    </Style>
+    <Style Selector="Button.LinkButton:pointerover TextBlock">
+      <Setter Property="Foreground" Value="{StaticResource AccentBrush}" />
+      <Setter Property="TextDecorations" Value="Underline" />
+    </Style>
+
+    <Style Selector="TextBlock.GroupTitle">
+      <Setter Property="FontSize" Value="14" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
+      <Setter Property="Margin" Value="0,18,0,8" />
+    </Style>
+
+    <!-- 每个组件一条，左侧一条细竖线跟声音克隆页情绪卡片的视觉语言
+         保持一致（表示"这是一个独立条目"），背景用 SurfaceBrush 跟
+         页面背景区分出层次。 -->
+    <Style Selector="Border.AckItem">
+      <Setter Property="Background" Value="{StaticResource SurfaceBrush}" />
+      <Setter Property="BorderThickness" Value="3,0,0,0" />
+      <Setter Property="BorderBrush" Value="{StaticResource CardBorderBrush}" />
+      <Setter Property="CornerRadius" Value="6" />
+      <Setter Property="Padding" Value="14,10" />
+      <Setter Property="Margin" Value="0,0,0,8" />
+    </Style>
+    <Style Selector="Border.AckItem.Required">
+      <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+    </Style>
+  </UserControl.Styles>
+
+  <ScrollViewer Padding="0,0,20,0">
+    <StackPanel Margin="24" MaxWidth="720" Spacing="4">
+
+      <!-- ===== 软件身份信息 ===== -->
+      <TextBlock Text="{Binding AppName}"
+                 FontSize="28" FontWeight="Bold"
+                 Foreground="{StaticResource TextPrimaryBrush}" />
+      <StackPanel Orientation="Horizontal" Spacing="8">
+        <TextBlock Text="{Binding Version}"
+                   Foreground="{StaticResource TextSecondaryBrush}" FontSize="13" />
+        <TextBlock Text="·" Foreground="{StaticResource TextSecondaryBrush}" FontSize="13" />
+        <TextBlock Text="{Binding Tagline}"
+                   Foreground="{StaticResource TextSecondaryBrush}" FontSize="13" />
+      </StackPanel>
+
+      <!-- ===== 使用的模型与开源项目 ===== -->
+      <TextBlock Text="使用的模型与开源项目"
+                 FontSize="18" FontWeight="Bold"
+                 Foreground="{StaticResource TextPrimaryBrush}"
+                 Margin="0,28,0,0" />
+
+      <ItemsControl ItemsSource="{Binding AcknowledgementGroups}">
+        <ItemsControl.ItemTemplate>
+          <DataTemplate x:DataType="vm:AcknowledgementGroup">
+            <StackPanel>
+              <TextBlock Classes="GroupTitle" Text="{Binding Title}" />
+
+              <ItemsControl ItemsSource="{Binding Items}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate x:DataType="vm:AcknowledgementItem">
+                    <Border Classes="AckItem"
+                            Classes.Required="{Binding RequiresAttribution}">
+                      <StackPanel Spacing="4">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                          <!-- 名字本身就是链接，点了用系统浏览器打开项目地址，
+                               不需要单独放一个"访问项目"按钮。 -->
+                          <Button Classes="LinkButton"
+                                  Command="{Binding $parent[UserControl].((vm:AboutViewModel)DataContext).OpenLinkCommand}"
+                                  CommandParameter="{Binding Url}">
+                            <TextBlock Text="{Binding Name}" />
+                          </Button>
+                          <Border Classes="RequirementTag"
+                                  Classes.Required="{Binding RequiresAttribution}"
+                                  Classes.Optional="{Binding !RequiresAttribution}">
+                            <TextBlock Classes="RequirementTagText" Text="{Binding AttributionLabel}" />
+                          </Border>
+                          <TextBlock Text="{Binding License}"
+                                     Foreground="{StaticResource TextSecondaryBrush}"
+                                     FontSize="12" VerticalAlignment="Center" />
+                        </StackPanel>
+                        <TextBlock Text="{Binding Description}"
+                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                   FontSize="12" TextWrapping="Wrap" />
+                      </StackPanel>
+                    </Border>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </StackPanel>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+
+      <!-- ===== 第三方云服务 ===== -->
+      <TextBlock Text="支持接入的第三方服务"
+                 FontSize="18" FontWeight="Bold"
+                 Foreground="{StaticResource TextPrimaryBrush}"
+                 Margin="0,28,0,8" />
+      <ItemsControl ItemsSource="{Binding ThirdPartyServices}">
+        <ItemsControl.ItemsPanel>
+          <ItemsPanelTemplate>
+            <WrapPanel />
+          </ItemsPanelTemplate>
+        </ItemsControl.ItemsPanel>
+        <ItemsControl.ItemTemplate>
+          <DataTemplate>
+            <Border Background="{StaticResource SurfaceBrush}"
+                    CornerRadius="6" Padding="10,5" Margin="0,0,8,8">
+              <TextBlock Text="{Binding}" Foreground="{StaticResource TextSecondaryBrush}" FontSize="12" />
+            </Border>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+      <TextBlock Text="云端服务，按各自服务条款使用，非本软件打包分发内容。"
+                 Foreground="{StaticResource TextSecondaryBrush}"
+                 FontSize="11" FontStyle="Italic" Margin="0,0,0,32" />
+
+    </StackPanel>
+  </ScrollViewer>
+</UserControl>
