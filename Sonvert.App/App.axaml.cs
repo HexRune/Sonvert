@@ -96,7 +96,18 @@ public partial class App : Application
     {
         services.AddSingleton<ISettingsService, SettingsService>();
         services.AddSingleton<ISenseVoiceService, SenseVoiceService>();
-        services.AddSingleton<IRecognitionSessionService, RecognitionSessionService>();
+
+        // 不再注册成单例——现在最多可能有两路并行的识别会话（输入一/
+        // 输入二），各自持有自己的 VAD/音频输入/后台处理任务，互不共享
+        // 状态。两路共用同一个 ISenseVoiceService（同一个模型进程），这个
+        // 是安全的：SenseVoiceService 的 StartAsync/LoadModelAsync 本身是
+        // 幂等的，两路都调一遍也没问题。LiveTranslationViewModel 用这个
+        // 工厂按需创建 1 号/2 号实例。
+        services.AddSingleton<Func<int, IRecognitionSessionService>>(sp => sourceIndex =>
+            new RecognitionSessionService(
+                sp.GetRequiredService<ISettingsService>(),
+                sp.GetRequiredService<ISenseVoiceService>(),
+                sourceIndex));
 
         services.AddSingleton<LiveTranslationViewModel>();
         services.AddSingleton<MainViewModel>();
@@ -109,8 +120,11 @@ public partial class App : Application
         services.AddSingleton<ITranslationService, TranslationRouter>();
 
         services.AddSingleton<LocalTtsService>();
+        services.AddSingleton<IndexTtsService>();
+        services.AddSingleton<QwenTtsService>();
         services.AddSingleton<ApiTtsService>();
         services.AddSingleton<AzureTtsService>();
+        services.AddSingleton<AliyunTtsService>();
         services.AddSingleton<ITtsService, TtsRouter>();
 
         services.AddSingleton<ICharacterRepository, CharacterRepository>();
@@ -145,7 +159,10 @@ public partial class App : Application
 
         await SafeCleanupStepAsync("识别会话", async () =>
         {
-            await Services.GetRequiredService<IRecognitionSessionService>().DisposeAsync();
+            // IRecognitionSessionService 不再是单例，输入一/输入二两个
+            // 实例现在归 LiveTranslationViewModel 自己管理和持有，清理
+            // 这一步也交给它，不能再直接从容器里 Resolve 了。
+            await Services.GetRequiredService<LiveTranslationViewModel>().DisposeRecognitionSessionsAsync();
         });
 
         await SafeCleanupStepAsync("SenseVoice 服务", async () =>

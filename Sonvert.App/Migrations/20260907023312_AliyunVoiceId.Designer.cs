@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Sonvert.App.Data;
 
@@ -10,9 +11,11 @@ using Sonvert.App.Data;
 namespace Sonvert.App.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260907023312_AliyunVoiceId")]
+    partial class AliyunVoiceId
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.11");
@@ -114,9 +117,6 @@ namespace Sonvert.App.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
-                    b.Property<int>("SourceIndex")
-                        .HasColumnType("INTEGER");
-
                     b.Property<string>("SourceText")
                         .IsRequired()
                         .HasColumnType("TEXT");
@@ -134,9 +134,6 @@ namespace Sonvert.App.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<int?>("TranslationLatencyMs")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<bool>("TtsLatencyIsFirstByte")
                         .HasColumnType("INTEGER");
 
                     b.Property<int?>("TtsLatencyMs")

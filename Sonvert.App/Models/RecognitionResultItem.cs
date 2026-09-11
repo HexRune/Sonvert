@@ -11,6 +11,17 @@ public partial class RecognitionResultItem : ObservableObject
 {
     public required string Text { get; init; }
 
+    /// <summary>1 或 2——这条结果来自输入一还是输入二。默认 1，兼容只有
+    /// 一路输入的常规场景（这种场景下这个字段永远是 1，界面不需要
+    /// 关心它）。启用输入二之后，字幕面板的筛选（全部/仅输入一/仅输入
+    /// 二）靠这个字段判断。</summary>
+    public int SourceIndex { get; init; } = 1;
+
+    /// <summary>界面上显示的来源小标签——只有输入二才会显示（"🎮 输入二"），
+    /// 输入一（绝大多数场景下的唯一输入）显示 null 直接隐藏，不给单路
+    /// 输入的用户平白多一个没有信息量的标签。</summary>
+    public string? SourceLabel => SourceIndex == 2 ? "🎮 输入二" : null;
+
     /// <summary>SenseVoice 原样返回的情绪标签（NEUTRAL/HAPPY/SAD/...），
     /// 界面显示请用下面的 EmotionDisplay，这个原始值目前只在
     /// EmotionDisplay 内部转换时用到，先保留是因为以后落历史记录/调试

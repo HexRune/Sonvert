@@ -30,7 +30,9 @@ public interface IHistoryRepository
         byte[]? translatedAudioWav,
         int? asrLatencyMs,
         int? translationLatencyMs,
-        int? ttsLatencyMs);
+        int? ttsLatencyMs,
+        bool ttsLatencyIsFirstByte = false,
+        int sourceIndex = 1);
 
     /// <summary>删除单条记录——连同它指向的一或两个音频文件一起删。</summary>
     Task DeleteEntryAsync(int id);

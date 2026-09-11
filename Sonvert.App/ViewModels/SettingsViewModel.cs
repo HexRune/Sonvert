@@ -28,6 +28,7 @@ public partial class SettingsViewModel : ViewModelBase
     [ObservableProperty] private int _senseVoicePort;
     [ObservableProperty] private string _senseVoiceExecutablePath = string.Empty;
     [ObservableProperty] private string _senseVoiceWorkingDirectory = string.Empty;
+    [ObservableProperty] private string _senseVoiceModelsDirectory = string.Empty;
     [ObservableProperty] private string _vadModelPath = string.Empty;
     [ObservableProperty] private string _modelPrecision = "fp32";
 
@@ -69,6 +70,7 @@ public partial class SettingsViewModel : ViewModelBase
         SenseVoicePort = s.SenseVoicePort;
         SenseVoiceExecutablePath = s.SenseVoiceExecutablePath;
         SenseVoiceWorkingDirectory = s.SenseVoiceWorkingDirectory;
+        SenseVoiceModelsDirectory = s.SenseVoiceModelsDirectory;
         VadModelPath = s.VadModelPath;
         ModelPrecision = s.ModelPrecision;
 
@@ -100,6 +102,7 @@ public partial class SettingsViewModel : ViewModelBase
         s.SenseVoicePort = SenseVoicePort;
         s.SenseVoiceExecutablePath = SenseVoiceExecutablePath;
         s.SenseVoiceWorkingDirectory = SenseVoiceWorkingDirectory;
+        s.SenseVoiceModelsDirectory = SenseVoiceModelsDirectory;
         s.VadModelPath = VadModelPath;
         s.ModelPrecision = ModelPrecision;
 

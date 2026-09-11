@@ -60,6 +60,9 @@
           <TextBlock Classes="FieldLabel" Text="工作目录" />
           <TextBox Text="{Binding SenseVoiceWorkingDirectory}" />
 
+          <TextBlock Classes="FieldLabel" Text="模型资源目录（am.mvn/embedding.npy/*.onnx 所在文件夹）" />
+          <TextBox Text="{Binding SenseVoiceModelsDirectory}" />
+
           <TextBlock Classes="FieldLabel" Text="VAD 模型文件路径（.onnx）" />
           <TextBox Text="{Binding VadModelPath}" />
 

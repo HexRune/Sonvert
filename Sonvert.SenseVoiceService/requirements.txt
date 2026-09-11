@@ -1,5 +1,14 @@
 fastapi==0.115.6
-uvicorn[standard]==0.34.0
+# Deliberately NOT using the [standard] extras - that would pull in
+# uvloop/httptools/websockets/watchfiles as well, but main.py already
+# passes loop="asyncio", http="h11" explicitly to uvicorn.run() (see the
+# comment there): partly so PyInstaller's static analysis can find the
+# concrete implementation, and partly because none of those extras are
+# actually used - SenseVoice is a single local loopback service, uvloop's
+# perf gain doesn't matter here, and uvloop isn't available on Windows
+# anyway. Plain uvicorn keeps the packaged build smaller for the same
+# behavior (verified locally).
+uvicorn==0.34.0
 pydantic==2.10.4
 
 # core inference deps

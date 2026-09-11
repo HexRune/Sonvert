@@ -34,6 +34,12 @@ public class RecognitionResultEventArgs : EventArgs
     public float[] AudioSamples { get; init; } = Array.Empty<float>();
     public int SampleRate { get; init; }
 
+    /// <summary>这条结果来自哪一路输入——1 或 2。始终等于产生它的
+    /// RecognitionSessionService 实例的 SourceIndex，不是识别内容本身
+    /// 带的信息，纯粹是"我是谁家的孩子"这个标记，供
+    /// LiveTranslationViewModel 决定走哪套目标语言/要不要接 TTS。</summary>
+    public int SourceIndex { get; init; } = 1;
+
     /// <summary>这句话从交给 SenseVoice 识别到识别结果返回，耗费的毫秒数
     /// ——只测这一段 HTTP 调用本身的时间，不包含 VAD 切分等前置步骤。
     /// 落进历史记录用于以后统计对比（见 HistoryEntry.AsrLatencyMs）。</summary>
@@ -42,6 +48,10 @@ public class RecognitionResultEventArgs : EventArgs
 
 public interface IRecognitionSessionService : IAsyncDisposable
 {
+    /// <summary>1 或 2——这个实例服务于哪一路输入，见 RecognitionSessionService
+    /// 里的注释。</summary>
+    int SourceIndex { get; }
+
     /// <summary>识别出一句完整语音时触发。在后台处理线程上触发，
     /// 如果调用方要更新 UI，记得自己切回 UI 线程（Avalonia 的
     /// Dispatcher.UIThread.Post），这里不负责帮你切。</summary>
@@ -85,16 +95,23 @@ public class RecognitionSessionService : IRecognitionSessionService
 
     private bool _isRunning;
 
+    /// <summary>1 或 2——这个实例服务于哪一路输入。构造时定死，不会变。
+    /// 决定 StartAsync 时该读 settings.InputDeviceId 还是
+    /// settings.InputDeviceId2，以及每条识别结果打上哪个来源标记。</summary>
+    public int SourceIndex { get; }
+
     public event EventHandler<RecognitionResultEventArgs>? ResultReceived;
 
     public event EventHandler<double>? LevelChanged;
 
     public RecognitionSessionService(
         ISettingsService settingsService,
-        ISenseVoiceService senseVoiceService)
+        ISenseVoiceService senseVoiceService,
+        int sourceIndex = 1)
     {
         _settingsService = settingsService;
         _senseVoiceService = senseVoiceService;
+        SourceIndex = sourceIndex;
     }
 
     public async Task StartAsync()
@@ -133,7 +150,7 @@ public class RecognitionSessionService : IRecognitionSessionService
         _processingCts = new CancellationTokenSource();
         _processingTask = Task.Run(() => ProcessSegmentsLoopAsync(_processingCts.Token));
 
-        _audioInput = CreateAudioInputSource(settings);
+        _audioInput = CreateAudioInputSource(settings, SourceIndex);
         _audioInput.DataAvailable += OnAudioDataAvailable;
 
         _isRunning = true;
@@ -182,18 +199,15 @@ public class RecognitionSessionService : IRecognitionSessionService
             _segmentChannel!.Writer.TryWrite(segment.Samples);
         }
     }
-    private static IAudioInputSource CreateAudioInputSource(AppSettings settings)
+    private static IAudioInputSource CreateAudioInputSource(AppSettings settings, int sourceIndex)
     {
-        if (settings.InputDeviceKind == "Loopback" && !string.IsNullOrWhiteSpace(settings.InputDeviceId))
-        {
-            using var deviceEnumerator = new NAudio.CoreAudioApi.MMDeviceEnumerator();
-            var device = deviceEnumerator.GetDevice(settings.InputDeviceId);
-            return new Sonvert.App.Services.Audio.LoopbackInputSource(device);
-        }
-
-        // 解析失败（比如设置文件里这个值意外变成空字符串）时兜底成 -1，
-        // 也就是"系统默认麦克风"，而不是之前那个固定写死的 0——
-        var micDeviceNumber = int.TryParse(settings.InputDeviceId, out var idx) ? idx : -1;
+        // Loopback 类型已经删掉（见 AudioInputDeviceOption.cs 顶部注释），
+        // 不用再判断 InputDeviceKind，统一按麦克风类设备处理——"翻译游戏
+        // 声音"这类需求交给 MixLine 这类虚拟麦克风工具，路由过来之后在
+        // 这里就是个普通的录音设备。解析失败（比如设置文件里这个值意外
+        // 变成空字符串）时兜底成 -1，也就是"系统默认麦克风"。
+        var deviceId = sourceIndex == 2 ? settings.InputDeviceId2 : settings.InputDeviceId;
+        var micDeviceNumber = int.TryParse(deviceId, out var idx) ? idx : -1;
         return new Sonvert.App.Services.Audio.MicrophoneInputSource(micDeviceNumber);
     }
 
@@ -231,6 +245,7 @@ public class RecognitionSessionService : IRecognitionSessionService
                         AudioSamples = samples,
                         SampleRate = SampleRate,
                         AsrLatencyMs = (int)stopwatch.ElapsedMilliseconds,
+                        SourceIndex = SourceIndex,
                     });
                 }
             }

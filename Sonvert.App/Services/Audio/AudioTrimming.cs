@@ -29,7 +29,7 @@ public static class AudioTrimming
 
         var samples = new short[totalSamples];
         var buffer = new byte[reader.Length];
-        reader.Read(buffer, 0, buffer.Length);
+        reader.ReadExactly(buffer, 0, buffer.Length);
         Buffer.BlockCopy(buffer, 0, samples, 0, buffer.Length);
 
         var threshold = (short)(short.MaxValue * thresholdRatio);

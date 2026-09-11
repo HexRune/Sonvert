@@ -50,11 +50,27 @@ public partial class SubtitleWindowViewModel : ObservableObject
         // 不这么做的话，打开字幕窗口之前说过的话不会出现在列表里。
         for (var i = _liveTranslationViewModel.Results.Count - 1; i >= 0; i--)
         {
-            Items.Add(_liveTranslationViewModel.Results[i]);
+            var item = _liveTranslationViewModel.Results[i];
+            if (MatchesSourceFilter(item))
+            {
+                Items.Add(item);
+            }
         }
 
         _liveTranslationViewModel.Results.CollectionChanged += OnResultsChanged;
     }
+
+    /// <summary>每次判断都直接读 _settingsService.Current，不缓存成字段——
+    /// 这个 ViewModel 是单例，只在第一次真正弹出字幕窗口时构造一次，
+    /// 如果把筛选值缓存进字段，同一次程序运行期间用户在首页改了设置
+    /// 也不会生效，必须重启整个程序才能读到新值，这跟"开始翻译前配置"
+    /// 的诉求对不上。实时读，每次开始新的一场翻译前改设置都能生效。</summary>
+    private bool MatchesSourceFilter(RecognitionResultItem item) => _settingsService.Current.SubtitleWindowSourceFilter switch
+    {
+        "Source1" => item.SourceIndex == 1,
+        "Source2" => item.SourceIndex == 2,
+        _ => true,
+    };
 
     private void OnResultsChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
@@ -64,7 +80,10 @@ public partial class SubtitleWindowViewModel : ObservableObject
         {
             foreach (RecognitionResultItem newItem in e.NewItems)
             {
-                Items.Add(newItem); // 加到我们这份列表的末尾，保持时间顺序
+                if (MatchesSourceFilter(newItem))
+                {
+                    Items.Add(newItem); // 加到我们这份列表的末尾，保持时间顺序
+                }
             }
         }
     }

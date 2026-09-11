@@ -290,6 +290,57 @@
             </StackPanel>
           </Border>
 
+          <!-- ===== 输入二（进阶功能：游戏内翻译场景）=====
+               典型用法：输入一是物理麦克风（自己说话 -> 英文，读给
+               队友听），输入二接一个 MixLine/VB-Cable 这类虚拟麦克风
+               （游戏语音路由过来的队友英文 -> 中文字幕）。输入二不接
+               语音合成/播放，只出字幕——原因见对话里的方案确认：
+               合成语音播出来会跟游戏本身的声音叠在一起，队友也可能
+               听到翻译成中文的内容，先只做字幕。 -->
+          <Border Classes="SettingsCard">
+            <StackPanel Spacing="14">
+              <Grid Classes="FieldRow" ColumnDefinitions="*,Auto">
+                <StackPanel Grid.Column="0">
+                  <TextBlock Classes="FieldLabel" Text="输入二（游戏内翻译）" />
+                  <TextBlock Text="开启后可以再接一路独立的麦克风类输入，只出字幕，不合成语音"
+                             Foreground="{StaticResource TextSecondaryBrush}"
+                             FontSize="11" TextWrapping="Wrap" />
+                </StackPanel>
+                <ToggleSwitch Grid.Column="1" IsChecked="{Binding EnableSecondInputSource}"
+                              OnContent="{x:Null}" OffContent="{x:Null}" />
+              </Grid>
+
+              <StackPanel Spacing="10" IsVisible="{Binding EnableSecondInputSource}">
+                <Grid ColumnDefinitions="*,Auto">
+                  <TextBlock Grid.Column="0" Classes="FieldLabel" Text="输入设备" VerticalAlignment="Center" />
+                  <ComboBox Grid.Column="1" Width="220"
+                            ItemsSource="{Binding AudioInputDevices}"
+                            SelectedItem="{Binding SelectedAudioInputDevice2}">
+                    <ComboBox.ItemTemplate>
+                      <DataTemplate x:DataType="audio:AudioInputDeviceOption">
+                        <TextBlock Text="{Binding DisplayName}" />
+                      </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                  </ComboBox>
+                </Grid>
+
+                <Grid ColumnDefinitions="*,Auto">
+                  <TextBlock Grid.Column="0" Classes="FieldLabel" Text="目标语言" VerticalAlignment="Center" />
+                  <ComboBox Grid.Column="1"
+                            ItemsSource="{Binding TargetLanguageOptions}"
+                            SelectedValue="{Binding TargetLanguage2}"
+                            SelectedValueBinding="{Binding Code}">
+                    <ComboBox.ItemTemplate>
+                      <DataTemplate x:DataType="vm:LanguageOption">
+                        <TextBlock Text="{Binding DisplayName}" />
+                      </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                  </ComboBox>
+                </Grid>
+              </StackPanel>
+            </StackPanel>
+          </Border>
+
           <!-- ===== 语音合成 ===== -->
           <Border Classes="SettingsCard">
             <StackPanel Spacing="14">
@@ -349,6 +400,37 @@
                         </ComboBox.ItemTemplate>
                       </ComboBox>
                     </Grid>
+
+                    <!-- 本地引擎二选一：GPT-SoVITS（预录情绪库）还是
+                         IndexTTS（实时原声当情绪参考）。两者共用上面的
+                         发声角色/NEUTRAL 参考音频，切换不需要重新配置。 -->
+                    <Grid ColumnDefinitions="*,Auto">
+                      <TextBlock Grid.Column="0" Classes="FieldLabel" Text="合成引擎" VerticalAlignment="Center" />
+                      <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4">
+                        <RadioButton Classes="BrowserTab" GroupName="TtsLocalEngine"
+                                     Content="GPT-SoVITS"
+                                     IsChecked="{Binding IsGptSovitsEngineSelected}" />
+                        <RadioButton Classes="BrowserTab" GroupName="TtsLocalEngine"
+                                     Content="IndexTTS"
+                                     IsChecked="{Binding IsIndexTtsEngineSelected}" />
+                        <RadioButton Classes="BrowserTab" GroupName="TtsLocalEngine"
+                                     Content="Qwen3-TTS"
+                                     IsChecked="{Binding IsQwenTtsEngineSelected}" />
+                      </StackPanel>
+                    </Grid>
+
+                    <!-- 情绪参考强度（emo_alpha），只有选中 IndexTTS 时才有
+                         意义。实时生效，不需要重启服务——见 HomeViewModel
+                         里 TtsEmoAlpha 的注释。 -->
+                    <StackPanel Spacing="4" IsVisible="{Binding IsIndexTtsSelected}">
+                      <Grid ColumnDefinitions="*,Auto">
+                        <TextBlock Grid.Column="0" Classes="FieldLabel" Text="情绪参考强度" VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="1" Text="{Binding TtsEmoAlpha, StringFormat={}{0:F2}}"
+                                   VerticalAlignment="Center" Opacity="0.7" />
+                      </Grid>
+                      <Slider Minimum="0" Maximum="1" TickFrequency="0.05" IsSnapToTickEnabled="False"
+                              Value="{Binding TtsEmoAlpha}" />
+                    </StackPanel>
                   </StackPanel>
 
                   <!-- API 标签内容：合成模型 + (Azure专属)区域/音色/情绪跟随
@@ -438,6 +520,33 @@
                                 Content="{Binding TtsApiKeyToggleGlyph}"
                                 Command="{Binding ToggleTtsApiKeyVisibilityCommand}" />
                       </Grid>
+                    </StackPanel>
+
+                    <!-- 阿里云百炼专属：WebSocket 地址（每个工作空间不一样，
+                         没法内置预设值）和模型名（声音复刻注册时用的
+                         target_model 必须跟这里一致）。 -->
+                    <StackPanel IsVisible="{Binding IsAliyunTtsSelected}" Spacing="10">
+                      <StackPanel>
+                        <TextBlock Classes="FieldLabel" Text="WebSocket 地址" />
+                        <TextBox Text="{Binding TtsAliyunWebSocketUrl}"
+                                 PlaceholderText="wss://ws-xxxxxxxx.cn-beijing.maas.aliyuncs.com/api-ws/v1/inference" />
+                        <TextBlock Text="每个百炼工作空间的地址不一样，去百炼控制台确认"
+                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                   FontSize="11" TextWrapping="Wrap" />
+                      </StackPanel>
+                      <StackPanel>
+                        <TextBlock Classes="FieldLabel" Text="模型名" />
+                        <TextBox Text="{Binding TtsAliyunModel}"
+                                 PlaceholderText="qwen-audio-3.0-tts-flash" />
+                      </StackPanel>
+                      <StackPanel>
+                        <TextBlock Classes="FieldLabel" Text="音色 ID（测试用，手动填）" />
+                        <TextBox Text="{Binding TtsAliyunManualVoiceId}"
+                                 PlaceholderText="声音复刻注册后拿到的 voice_id" />
+                        <TextBlock Text="完整的注册流程还没做进应用里，先手动粘贴一个已经注册好的 voice_id"
+                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                   FontSize="11" TextWrapping="Wrap" />
+                      </StackPanel>
                     </StackPanel>
                   </StackPanel>
                 </Panel>
@@ -583,6 +692,23 @@
                 <ToggleSwitch Grid.Column="1" IsChecked="{Binding SubtitleEnabled}"
                               OnContent="{x:Null}" OffContent="{x:Null}" />
               </Grid>
+
+              <!-- 只有开了输入二才有意义——单路输入场景下悬浮窗口只会
+                   有一路内容，这个筛选控件是多余的界面噪音。必须在开始
+                   翻译前配置好，运行中悬浮窗口本身没有筛选按钮，保持
+                   界面干净（跟"实时翻译"主界面里那个随时可切的筛选是
+                   两回事）。 -->
+              <StackPanel IsVisible="{Binding EnableSecondInputSource}" Spacing="4">
+                <TextBlock Classes="FieldLabel" Text="悬浮字幕显示内容" />
+                <StackPanel Orientation="Horizontal" Spacing="4">
+                  <RadioButton Classes="BrowserTab" GroupName="SubtitleWindowFilter"
+                               Content="全部" IsChecked="{Binding IsSubtitleWindowFilterAll}" />
+                  <RadioButton Classes="BrowserTab" GroupName="SubtitleWindowFilter"
+                               Content="仅输入一" IsChecked="{Binding IsSubtitleWindowFilterSource1}" />
+                  <RadioButton Classes="BrowserTab" GroupName="SubtitleWindowFilter"
+                               Content="仅输入二" IsChecked="{Binding IsSubtitleWindowFilterSource2}" />
+                </StackPanel>
+              </StackPanel>
 
               <Button Content="解锁字幕（Ctrl+Shift+L 同样有效）"
                       Command="{Binding UnlockSubtitleCommand}"

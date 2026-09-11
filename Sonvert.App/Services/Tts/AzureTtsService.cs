@@ -52,7 +52,9 @@ public class AzureTtsService : ITtsService
 
     public Task StopAsync() => Task.CompletedTask;
 
-    public async Task<TtsResult> SynthesizeAsync(string text, string language, string emotion)
+    public async Task<TtsResult> SynthesizeAsync(
+        string text, string language, string emotion,
+        float[]? liveEmotionAudio = null, int liveEmotionSampleRate = 0)
     {
         var settings = _settingsService.Current;
 

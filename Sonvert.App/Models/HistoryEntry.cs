@@ -26,6 +26,11 @@ public class HistoryEntry
     public int? CharacterId { get; set; }
     public string? TargetLanguage { get; set; }
 
+    /// <summary>1 或 2——这条记录来自输入一还是输入二，默认 1。只有启用
+    /// 了输入二这个进阶功能的场景才会出现 2；单路输入的常规用户不会
+    /// 感知到这个字段的存在。</summary>
+    public int SourceIndex { get; set; } = 1;
+
     /// <summary>相对路径（相对 AppDbContext.AppDataRoot），指向识别到的
     /// 原始语音——这份音频不是我们自己录的，是 SenseVoice 识别这句话时
     /// 顺带传回来的那段波形（RecognitionResultEventArgs.AudioSamples），
@@ -55,6 +60,14 @@ public class HistoryEntry
     public int? TranslationLatencyMs { get; set; }
     public int? TtsLatencyMs { get; set; }
 
+    /// <summary>TtsLatencyMs 存的到底是"整句音频全部合成完"的耗时，还是
+    /// "收到第一段音频、可以开始播放"的耗时——两者含义完全不同，不能都
+    /// 顶着"合成"这一个标签显示，容易让人以为不同引擎之间这个数字可以
+    /// 直接比较。走真正流式协议的引擎（目前只有 AliyunTtsService）会把
+    /// 这个设成 true；GPT-SoVITS/IndexTTS/Qwen3-TTS 这些"一次性吐出完整
+    /// 音频"的引擎，TtsLatencyMs 本来就是整句耗时，这个字段保持 false。</summary>
+    public bool TtsLatencyIsFirstByte { get; set; }
+
     /// <summary>三段延迟里实际发生过的加起来，用于界面上显示"总延迟"。
     /// 不单独存一个数据库字段——总数完全由这三段推算得出，存一份冗余
     /// 数据没有必要，还多一个"改了某一段却忘了同步改总数"的风险。</summary>
@@ -83,7 +96,11 @@ public class HistoryEntry
             var segments = new List<string>();
             if (AsrLatencyMs.HasValue) segments.Add($"识别 {AsrLatencyMs}ms");
             if (TranslationLatencyMs.HasValue) segments.Add($"翻译 {TranslationLatencyMs}ms");
-            if (TtsLatencyMs.HasValue) segments.Add($"合成 {TtsLatencyMs}ms");
+            if (TtsLatencyMs.HasValue)
+            {
+                var label = TtsLatencyIsFirstByte ? "首包" : "合成";
+                segments.Add($"{label} {TtsLatencyMs}ms");
+            }
             return string.Join(" · ", segments);
         }
     }

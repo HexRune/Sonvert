@@ -15,7 +15,9 @@ public class ApiTtsService : ITtsService
 
     public Task StartAsync() => Task.CompletedTask;
 
-    public Task<TtsResult> SynthesizeAsync(string text, string language, string emotion)
+    public Task<TtsResult> SynthesizeAsync(
+        string text, string language, string emotion,
+        float[]? liveEmotionAudio = null, int liveEmotionSampleRate = 0)
     {
         throw new NotImplementedException(
             "第三方 TTS API 尚未接入。请在设置里把 TTSProvider 改回 \"local\"。");

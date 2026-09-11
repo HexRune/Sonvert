@@ -1,5 +1,4 @@
 ﻿using System.Collections.Generic;
-using NAudio.CoreAudioApi;
 using NAudio.Wave;
 
 namespace Sonvert.App.Services.Audio;
@@ -22,6 +21,9 @@ public static class AudioInputDeviceEnumerator
         };
 
         // 真实麦克风类设备——用 NAudio 传统的 WaveInEvent 枚举方式。
+        // MixLine/VB-Cable 这类工具创建的虚拟麦克风设备，在 Windows 看来
+        // 就是普通的录音设备，会跟真实麦克风一起出现在这个列表里，不需要
+        // 额外识别或者特殊处理。
         for (var i = 0; i < WaveInEvent.DeviceCount; i++)
         {
             var caps = WaveInEvent.GetCapabilities(i);
@@ -30,20 +32,6 @@ public static class AudioInputDeviceEnumerator
                 Kind = AudioInputDeviceKind.Microphone,
                 Id = i.ToString(),
                 DisplayName = $"🎤 {caps.ProductName}",
-            });
-        }
-
-        // 输出设备（用来做回环采集）——用 Core Audio API 枚举当前处于
-        // "启用"状态的渲染设备（也就是正常能拿来放声音的那些）。
-        using var deviceEnumerator = new MMDeviceEnumerator();
-        var renderDevices = deviceEnumerator.EnumerateAudioEndPoints(DataFlow.Render, DeviceState.Active);
-        foreach (var device in renderDevices)
-        {
-            options.Add(new AudioInputDeviceOption
-            {
-                Kind = AudioInputDeviceKind.Loopback,
-                Id = device.ID,
-                DisplayName = $"🔊 {device.FriendlyName}（回环）",
             });
         }
 

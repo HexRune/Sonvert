@@ -132,7 +132,14 @@ public class LocalTtsService : ITtsService, IAsyncDisposable
         var audioData = await response.Content.ReadAsByteArrayAsync();
         return new TtsResult { AudioData = audioData, MediaType = "wav" };
     }
-    public async Task<TtsResult> SynthesizeAsync(string text, string language, string emotion)
+    /// <summary>liveEmotionAudio/liveEmotionSampleRate 参数在这里没用——GPT-SoVITS
+    /// 只认预录的情绪参考音频（通过 emotion 标签查 CharacterEmotionClip 表），
+    /// 这两个参数是 IndexTtsService 专用的（见 IndexTtsService.cs 顶部注释），
+    /// ITtsService 接口层面统一签名只是为了让 TtsRouter 能透明转发，不代表
+    /// 每个实现都要用上。</summary>
+    public async Task<TtsResult> SynthesizeAsync(
+        string text, string language, string emotion,
+        float[]? liveEmotionAudio = null, int liveEmotionSampleRate = 0)
     {
         var settings = _settingsService.Current;
 

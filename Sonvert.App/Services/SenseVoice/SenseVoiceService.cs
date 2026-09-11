@@ -78,6 +78,17 @@ public class SenseVoiceService : ISenseVoiceService, IAsyncDisposable
                 "检查设置里的 SenseVoiceWorkingDirectory");
         }
 
+        // 模型目录跟 workingDirectory 是两个独立配置项（见 AppSettings 里
+        // SenseVoiceModelsDirectory 的注释），分开检查，报错信息才能准确
+        // 指向到底是哪一个配置项配错了，而不是笼统地说"服务起不来"。
+        var modelsDirectory = _settingsService.Current.SenseVoiceModelsDirectory;
+        if (!Directory.Exists(modelsDirectory))
+        {
+            throw new DirectoryNotFoundException(
+                $"找不到 SenseVoice 模型目录: {modelsDirectory}，" +
+                "检查设置里的 SenseVoiceModelsDirectory");
+        }
+
         // service_config.json 是 Python 端 config.py 在进程启动时一次性读取的，
         // 不是运行时动态监听的文件，所以必须在 Process.Start 之前写好，
         // 写晚了端口不会生效。
@@ -122,6 +133,12 @@ public class SenseVoiceService : ISenseVoiceService, IAsyncDisposable
         {
             port = _settingsService.Current.SenseVoicePort,
             host = "127.0.0.1",
+            // 显式转成绝对路径再写进去——用户在设置里填的可能是相对路径，
+            // 但 Python 子进程的当前工作目录是 workingDirectory（打包后是
+            // exe 所在文件夹），跟软件安装根目录不一定是同一层级，写相对
+            // 路径过去很容易解析到错误的位置。这里在 C# 侧统一转成绝对路径，
+            // Python 那边直接用，不用猜测"相对于哪里"。
+            resource_dir = Path.GetFullPath(_settingsService.Current.SenseVoiceModelsDirectory),
         };
         await File.WriteAllTextAsync(configPath, JsonSerializer.Serialize(config));
     }

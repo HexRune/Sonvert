@@ -40,12 +40,27 @@ public class PlaybackQueueService : IPlaybackQueueService, IAsyncDisposable
             {
                 try
                 {
-                    // 等这一句真正准备好（或者被标记为"跳过，没有音频"）——
-                    // 这一步天然保证了"上一句播完/跳过之前，绝不会开始下一句"。
-                    var audioData = await slot.AudioTask;
-                    if (audioData is not null)
+                    // 一个 slot 只会用到 AudioTask/StreamingTask 其中一个，
+                    // 另一个永远不会完成——用 WhenAny 等哪个先完成，就说明
+                    // 这句话走的是哪条路径，按对应方式播放。
+                    var completed = await Task.WhenAny(slot.AudioTask, slot.StreamingTask);
+
+                    if (completed == slot.AudioTask)
                     {
-                        await _playbackService.PlayAsync(audioData);
+                        var audioData = await slot.AudioTask;
+                        if (audioData is not null)
+                        {
+                            await _playbackService.PlayAsync(audioData);
+                        }
+                    }
+                    else
+                    {
+                        var streaming = await slot.StreamingTask;
+                        if (streaming is not null)
+                        {
+                            await _playbackService.PlayStreamingAsync(
+                                streaming.Chunks, streaming.SampleRate, streaming.Channels, streaming.BitsPerSample);
+                        }
                     }
                 }
                 catch (Exception ex)

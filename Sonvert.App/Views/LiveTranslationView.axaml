@@ -67,9 +67,24 @@
          右栏的情绪/场景文字就会被滚动条盖住（之前反馈的问题）。
          这里给 ScrollViewer 本身留出 20px 的右侧内边距，让内容整体往左
          挪一点，滚动条悬浮的时候盖住的是这段空白区域，不会再挡住文字。 -->
+    <!-- 字幕来源筛选：只有启用了输入二才显示这排按钮——单路输入的
+         常规场景下这个控件是多余的界面噪音，IsSecondInputSourceEnabled
+         直接读 AppSettings.EnableSecondInputSource。 -->
+    <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="8"
+                Margin="0,0,0,12" HorizontalAlignment="Right"
+                IsVisible="{Binding IsSecondInputSourceEnabled}"
+                VerticalAlignment="Top">
+      <RadioButton Classes="SegmentButton" GroupName="SubtitleFilter"
+                   Content="全部" IsChecked="{Binding IsSubtitleFilterAll}" />
+      <RadioButton Classes="SegmentButton" GroupName="SubtitleFilter"
+                   Content="仅输入一" IsChecked="{Binding IsSubtitleFilterSource1}" />
+      <RadioButton Classes="SegmentButton" GroupName="SubtitleFilter"
+                   Content="仅输入二" IsChecked="{Binding IsSubtitleFilterSource2}" />
+    </StackPanel>
+
     <ScrollViewer Grid.Row="1" Margin="0,16,0,0" Padding="0,0,20,0"
                   IsVisible="{Binding IsRunning}">
-      <ItemsControl ItemsSource="{Binding Results}">
+      <ItemsControl ItemsSource="{Binding FilteredResults}">
         <ItemsControl.ItemTemplate>
           <DataTemplate x:DataType="models:RecognitionResultItem">
             <Border BorderBrush="{StaticResource CardBorderBrush}"
@@ -110,6 +125,12 @@
                      自动带出来的效果，这里不需要额外处理。 -->
                 <StackPanel Grid.Column="1" Spacing="4" Width="90"
                             Margin="16,0,0,0" HorizontalAlignment="Right">
+                  <!-- SourceLabel 只有输入二会有内容（"🎮 输入二"），
+                       输入一是 null 自动不显示，单路输入场景完全无感知。 -->
+                  <TextBlock Text="{Binding SourceLabel}"
+                             Foreground="{StaticResource TextSecondaryBrush}"
+                             FontSize="11"
+                             HorizontalAlignment="Right" />
                   <TextBlock Text="{Binding EmotionDisplay}"
                              Foreground="{StaticResource TextSecondaryBrush}"
                              FontSize="12"

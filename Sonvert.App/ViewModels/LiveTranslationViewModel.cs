@@ -1,5 +1,8 @@
 using System;
 using System.Collections.ObjectModel;
+using System.IO;
+using System.Linq;
+using System.Threading.Channels;
 using System.Threading.Tasks;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -32,7 +35,8 @@ namespace Sonvert.App.ViewModels;
 /// </summary>
 public partial class LiveTranslationViewModel : ViewModelBase
 {
-    private readonly IRecognitionSessionService _recognitionSession;
+    private readonly IRecognitionSessionService _recognitionSession1;
+    private readonly IRecognitionSessionService _recognitionSession2;
     private readonly ITranslationService _translationService;
     private readonly ITtsService _ttsService;
     private readonly IPlaybackQueueService _playbackQueue;
@@ -40,6 +44,65 @@ public partial class LiveTranslationViewModel : ViewModelBase
     private readonly ISettingsService _settingsService;
 
     public ObservableCollection<RecognitionResultItem> Results { get; } = new();
+
+    /// <summary>字幕面板实际显示的列表——按 SubtitleFilter 从 Results
+    /// 里筛出来的子集。Results 本身永远是全量（不管筛选是什么，两路的
+    /// 结果都会话进这里，供历史记录/后续统计使用），FilteredResults
+    /// 只是"当前给用户看哪些"这一层展示逻辑，不影响数据完整性。只有
+    /// 输入二启用的时候这个筛选才有意义；没启用的时候 SubtitleFilter
+    /// 恒为 "All"，FilteredResults 跟 Results 内容完全一致。</summary>
+    public ObservableCollection<RecognitionResultItem> FilteredResults { get; } = new();
+
+    [ObservableProperty]
+    private string _subtitleFilter;
+
+    /// <summary>字幕筛选控件要不要显示——只有启用了输入二才有意义，
+    /// 单路输入的场景下这个筛选控件本身就是多余的界面噪音。</summary>
+    public bool IsSecondInputSourceEnabled => _settingsService.Current.EnableSecondInputSource;
+
+    public bool IsSubtitleFilterAll
+    {
+        get => SubtitleFilter == "All";
+        set { if (value) SubtitleFilter = "All"; }
+    }
+
+    public bool IsSubtitleFilterSource1
+    {
+        get => SubtitleFilter == "Source1";
+        set { if (value) SubtitleFilter = "Source1"; }
+    }
+
+    public bool IsSubtitleFilterSource2
+    {
+        get => SubtitleFilter == "Source2";
+        set { if (value) SubtitleFilter = "Source2"; }
+    }
+
+    partial void OnSubtitleFilterChanged(string value)
+    {
+        _settingsService.Current.SubtitleDisplayFilter = value;
+        _ = _settingsService.SaveAsync();
+        RebuildFilteredResults();
+        OnPropertyChanged(nameof(IsSubtitleFilterAll));
+        OnPropertyChanged(nameof(IsSubtitleFilterSource1));
+        OnPropertyChanged(nameof(IsSubtitleFilterSource2));
+    }
+
+    private bool MatchesSubtitleFilter(RecognitionResultItem item) => SubtitleFilter switch
+    {
+        "Source1" => item.SourceIndex == 1,
+        "Source2" => item.SourceIndex == 2,
+        _ => true,
+    };
+
+    private void RebuildFilteredResults()
+    {
+        FilteredResults.Clear();
+        foreach (var item in Results.Where(MatchesSubtitleFilter))
+        {
+            FilteredResults.Add(item);
+        }
+    }
 
     [ObservableProperty]
     private bool _isRunning;
@@ -156,22 +219,30 @@ public partial class LiveTranslationViewModel : ViewModelBase
     private string? _errorMessage;
 
     public LiveTranslationViewModel(
-        IRecognitionSessionService recognitionSession,
+        Func<int, IRecognitionSessionService> recognitionSessionFactory,
         ITranslationService translationService,
         ITtsService ttsService,
         IPlaybackQueueService playbackQueue,
         IHistoryRepository historyRepository, // 新增参数
         ISettingsService settingsService)
     {
-        _recognitionSession = recognitionSession;
+        _recognitionSession1 = recognitionSessionFactory(1);
+        _recognitionSession2 = recognitionSessionFactory(2);
         _translationService = translationService;
         _ttsService = ttsService;
         _playbackQueue = playbackQueue;
         _historyRepository = historyRepository;
         _settingsService = settingsService;
 
-        _recognitionSession.ResultReceived += OnResultReceived;
-        _recognitionSession.LevelChanged += OnLevelChanged;
+        _subtitleFilter = settingsService.Current.SubtitleDisplayFilter;
+
+        _recognitionSession1.ResultReceived += OnResultReceived;
+        _recognitionSession1.LevelChanged += OnLevelChanged;
+        // 输入二不接顶部的电平指示条——那条电平表的设计初衷是"我自己
+        // 说话时声音够不够大"，天然对应输入一（人说话对着的那个麦克风）；
+        // 输入二是游戏音频路由过来的虚拟麦克风，音量本来就跟人声电平
+        // 不是一回事，接上去反而会让电平表的含义变得模糊。
+        _recognitionSession2.ResultReceived += OnResultReceived;
 
         InitializeLevelSegments();
 
@@ -190,6 +261,15 @@ public partial class LiveTranslationViewModel : ViewModelBase
         };
     }
 
+    /// <summary>App.axaml.cs 退出清理流程调用——IRecognitionSessionService
+    /// 不再是单例，两个实例现在归这个 ViewModel 自己持有，容器里已经
+    /// 没有别的地方能直接 Resolve 到它们了，清理这一步只能从这里发起。</summary>
+    public async Task DisposeRecognitionSessionsAsync()
+    {
+        await _recognitionSession1.DisposeAsync();
+        await _recognitionSession2.DisposeAsync();
+    }
+
     /// <summary>LevelChanged 跟 ResultReceived 一样是在后台采集线程上
     /// 触发的，直接赋值给 [ObservableProperty] 会导致绑定通知从非 UI
     /// 线程发出，Avalonia 的 UI 更新必须切回 UI 线程，用法上跟
@@ -206,6 +286,14 @@ public partial class LiveTranslationViewModel : ViewModelBase
         try
         {
             var settings = _settingsService.Current;
+
+            // IsSecondInputSourceEnabled 是从设置里实时读的计算属性，
+            // 但 HomeViewModel 和这个 ViewModel 是两个独立实例，互相不
+            // 感知对方的属性变化——首页切换"输入二"开关不会自动通知到
+            // 这边。开始翻译这一刻是这个设置真正生效的时间点，在这里
+            // 主动刷新一次通知，字幕筛选按钮的显示状态就能跟上最新设置。
+            OnPropertyChanged(nameof(IsSecondInputSourceEnabled));
+
             // 翻译服务启动完成后紧接着调一次模型预加载——跟 TTS 那边的
             var loadTranslationTask = settings.TranslationProvider == "api"
             ? Task.CompletedTask
@@ -232,7 +320,11 @@ public partial class LiveTranslationViewModel : ViewModelBase
             }).Unwrap()
             : Task.CompletedTask;
 
-            await _recognitionSession.StartAsync();
+            await _recognitionSession1.StartAsync();
+            if (settings.EnableSecondInputSource)
+            {
+                await _recognitionSession2.StartAsync();
+            }
             await loadTranslationTask;
             await loadTtsTask;
 
@@ -247,7 +339,11 @@ public partial class LiveTranslationViewModel : ViewModelBase
     [RelayCommand]
     private async Task StopAsync()
     {
-        await _recognitionSession.StopAsync();
+        await _recognitionSession1.StopAsync();
+        // 输入二没启用的时候这里也是安全的——StopAsync 内部会先检查
+        // 有没有真的在跑，没跑过就直接返回，不会因为"从来没 Start 过"
+        // 而报错。
+        await _recognitionSession2.StopAsync();
         await _translationService.StopAsync();
         await _ttsService.StopAsync();
         IsRunning = false;
@@ -264,8 +360,23 @@ public partial class LiveTranslationViewModel : ViewModelBase
                 Emotion = e.Emotion,
                 Event = e.Event,
                 AsrLatencyMs = e.AsrLatencyMs,
+                SourceIndex = e.SourceIndex,
             };
             Results.Insert(0, item);
+            if (MatchesSubtitleFilter(item))
+            {
+                FilteredResults.Insert(0, item);
+            }
+
+            if (e.SourceIndex == 2)
+            {
+                // 输入二只出字幕，不接 TTS/播放——没有播放位置要占，
+                // 直接走精简版的"识别+翻译+落历史"流程。
+                _ = TranslateOnlyAsync(
+                    item, e.Text, e.Language, e.Emotion, e.Event,
+                    e.AudioSamples, e.SampleRate, e.AsrLatencyMs);
+                return;
+            }
 
             var playbackSlot = _playbackQueue.Enqueue();
 
@@ -276,6 +387,82 @@ public partial class LiveTranslationViewModel : ViewModelBase
                 item, e.Text, e.Language, e.Emotion, e.Event,
                 e.AudioSamples, e.SampleRate, e.AsrLatencyMs, playbackSlot);
         });
+    }
+
+    /// <summary>输入二专用的精简流程：只做识别+翻译+落历史记录+更新
+    /// 字幕，不碰 TTS、不占用播放队列。跟 TranslateAndSpeakAsync 共用
+    /// "语言支持检查"“翻译失败也要落一笔历史"这些设计原则，但因为完全
+    /// 不涉及音频合成/播放，没有必要硬凑成同一个方法用一堆 if 分支
+    /// 岔开，独立成一个更短的方法反而更容易看懂。</summary>
+    private async Task TranslateOnlyAsync(
+        RecognitionResultItem item, string text, string? language, string? emotion, string? eventTag,
+        float[] audioSamples, int sampleRate, int asrLatencyMs)
+    {
+        var configuredTarget = _settingsService.Current.TargetLanguage2;
+
+        string? translatedTextForHistory = null;
+        int? translationLatencyMs = null;
+
+        if (language != "zh" && language != "en")
+        {
+            await SaveHistoryAsync();
+            return;
+        }
+
+        if (language == configuredTarget)
+        {
+            // 已经是目标语言，不用翻译——理由跟 TranslateAndSpeakAsync
+            // 里同样的分支一致，见那边的注释。
+            item.TranslatedText = text;
+        }
+        else
+        {
+            var translationStopwatch = System.Diagnostics.Stopwatch.StartNew();
+            try
+            {
+                var translationResult = await _translationService.TranslateAsync(text, language, configuredTarget);
+                item.TranslatedText = translationResult.TranslatedText;
+                translatedTextForHistory = translationResult.TranslatedText;
+            }
+            catch (Exception ex)
+            {
+                item.TranslatedText = $"[翻译失败: {ex.Message}]";
+                translationLatencyMs = (int)translationStopwatch.ElapsedMilliseconds;
+                item.TranslationLatencyMs = translationLatencyMs;
+                await SaveHistoryAsync();
+                return;
+            }
+            finally
+            {
+                translationStopwatch.Stop();
+            }
+
+            translationLatencyMs = (int)translationStopwatch.ElapsedMilliseconds;
+            item.TranslationLatencyMs = translationLatencyMs;
+        }
+
+        await SaveHistoryAsync();
+        return;
+
+        async Task SaveHistoryAsync()
+        {
+            var sourceAudioWav = WavEncoder.EncodeFloatSamplesToWav(audioSamples, sampleRate);
+
+            await _historyRepository.AddAsync(
+                timestamp: DateTime.Now,
+                sourceText: text,
+                translatedText: translatedTextForHistory,
+                emotion: emotion,
+                eventTag: eventTag,
+                characterId: null, // 输入二不接 TTS，没有"用了哪个角色"这回事
+                targetLanguage: configuredTarget,
+                sourceAudioWav: sourceAudioWav,
+                translatedAudioWav: null,
+                asrLatencyMs: asrLatencyMs,
+                translationLatencyMs: translationLatencyMs,
+                ttsLatencyMs: null,
+                sourceIndex: 2);
+        }
     }
 
     private async Task TranslateAndSpeakAsync(
@@ -294,6 +481,7 @@ public partial class LiveTranslationViewModel : ViewModelBase
         // TTS 播放关闭），跟 HistoryEntry 里对应字段的语义完全一致。
         int? translationLatencyMs = null;
         int? ttsLatencyMs = null;
+        var ttsLatencyIsFirstByte = false;
 
         if (language != "zh" && language != "en")
         {
@@ -347,23 +535,83 @@ public partial class LiveTranslationViewModel : ViewModelBase
         if (_settingsService.Current.EnableTtsPlayback)
         {
             var ttsStopwatch = System.Diagnostics.Stopwatch.StartNew();
-            try
+
+            if (_ttsService.SupportsStreaming)
             {
-                var ttsResult = await _ttsService.SynthesizeAsync(textToSpeak, configuredTarget, emotion ?? "NEUTRAL");
-                playbackSlot.Complete(ttsResult.AudioData);
-                translatedAudioForHistory = ttsResult.AudioData;
+                // 流式路径：一份数据要同时供给两个消费者——播放队列（要
+                // 边收边播）和历史记录（要存完整文件）。IAsyncEnumerable
+                // 只能被枚举一次，所以这里自己枚举一遍，边收边转发进一个
+                // Channel 给播放队列，同时攒进内存缓冲区给历史记录用，
+                // 而不是指望播放队列和历史记录分别各枚举一次源头。
+                var (streamSampleRate, streamChannels, streamBitsPerSample) = _ttsService.StreamingAudioFormat;
+                var playbackChannel = Channel.CreateUnbounded<byte[]>();
+                playbackSlot.CompleteStreaming(
+                    playbackChannel.Reader.ReadAllAsync(), streamSampleRate, streamChannels, streamBitsPerSample);
+
+                var pcmBuffer = new MemoryStream();
+                int? firstChunkMs = null;
+                try
+                {
+                    await foreach (var chunk in _ttsService.SynthesizeStreamingAsync(
+                        textToSpeak, configuredTarget, emotion ?? "NEUTRAL", audioSamples, sampleRate))
+                    {
+                        firstChunkMs ??= (int)ttsStopwatch.ElapsedMilliseconds;
+                        await playbackChannel.Writer.WriteAsync(chunk);
+                        pcmBuffer.Write(chunk, 0, chunk.Length);
+                    }
+                    playbackChannel.Writer.Complete();
+
+                    translatedAudioForHistory = WavEncoder.EncodePcmBytesToWav(
+                        pcmBuffer.ToArray(), streamSampleRate, streamChannels, streamBitsPerSample);
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[TTS] 流式合成失败: {ex.Message}");
+                    // 播放队列那边已经拿到 playbackChannel.Reader 在消费了，
+                    // 让这个异常通过 channel 传过去，播放队列的 catch 块会
+                    // 按"这句跳过、继续下一句"处理——跟非流式路径调用
+                    // playbackSlot.Complete(null) 达到的效果是一样的，只是
+                    // 流式这条路不能再调 Complete(null)（一个 slot 的
+                    // AudioTask/StreamingTask 只会用其中一个，这里已经用了
+                    // StreamingTask）。
+                    playbackChannel.Writer.TryComplete(ex);
+                }
+                finally
+                {
+                    ttsStopwatch.Stop();
+                    ttsLatencyMs = firstChunkMs ?? (int)ttsStopwatch.ElapsedMilliseconds;
+                    ttsLatencyIsFirstByte = firstChunkMs.HasValue;
+                    item.TtsLatencyMs = ttsLatencyMs;
+                }
             }
-            catch (Exception ex)
+            else
             {
-                System.Diagnostics.Debug.WriteLine($"[TTS] 合成失败: {ex.Message}");
-                playbackSlot.Complete(null);
-            }
-            finally
-            {
-                // 不管成功失败都记这段耗时，理由跟上面翻译失败那里一样。
-                ttsStopwatch.Stop();
-                ttsLatencyMs = (int)ttsStopwatch.ElapsedMilliseconds;
-                item.TtsLatencyMs = ttsLatencyMs;
+                TtsResult? ttsResult = null;
+                try
+                {
+                    ttsResult = await _ttsService.SynthesizeAsync(
+                        textToSpeak, configuredTarget, emotion ?? "NEUTRAL",
+                        audioSamples, sampleRate);
+                    playbackSlot.Complete(ttsResult.AudioData);
+                    translatedAudioForHistory = ttsResult.AudioData;
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[TTS] 合成失败: {ex.Message}");
+                    playbackSlot.Complete(null);
+                }
+                finally
+                {
+                    ttsStopwatch.Stop();
+                    // 流式引擎（目前只有 AliyunTtsService）会填 TimeToFirstByteMs——
+                    // 这种情况下"合成耗时"记的是"能开始播放第一段音频"要多久，
+                    // 不是"整句话全部合成完"要多久，跟这类引擎的实际用户体验
+                    // 更对得上。非流式引擎（GPT-SoVITS/IndexTTS/Qwen3-TTS）
+                    // 这个值是 null，退回原来的整体耗时统计，行为不变。
+                    ttsLatencyMs = ttsResult?.TimeToFirstByteMs ?? (int)ttsStopwatch.ElapsedMilliseconds;
+                    ttsLatencyIsFirstByte = ttsResult?.TimeToFirstByteMs.HasValue == true;
+                    item.TtsLatencyMs = ttsLatencyMs;
+                }
             }
         }
         else
@@ -397,7 +645,8 @@ public partial class LiveTranslationViewModel : ViewModelBase
                 translatedAudioWav: translatedAudioForHistory,
                 asrLatencyMs: asrLatencyMs,
                 translationLatencyMs: translationLatencyMs,
-                ttsLatencyMs: ttsLatencyMs);
+                ttsLatencyMs: ttsLatencyMs,
+                ttsLatencyIsFirstByte: ttsLatencyIsFirstByte);
         }
     }
 }

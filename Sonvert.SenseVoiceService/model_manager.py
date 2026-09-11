@@ -16,8 +16,24 @@ from pathlib import Path
 from typing import Optional
 
 import numpy as np
+from onnxruntime import get_available_providers, get_device
+
+from config import config
 
 logger = logging.getLogger("sense_voice_service")
+
+
+def gpu_available() -> bool:
+    """当前 onnxruntime 安装是否真的能跑 CUDAExecutionProvider。
+
+    只有装了 onnxruntime-gpu（而不是普通 onnxruntime）、且机器上的 CUDA/cuDNN
+    版本跟这个 onnxruntime-gpu 编译时依赖的版本匹配，这里才会是 True。
+    单纯"有没有 NVIDIA 显卡"不是这里判断的依据 —— get_available_providers()
+    问的是 onnxruntime 这个进程实际加载成功的 EP 列表，两者不匹配时（比如装了
+    onnxruntime-gpu 但系统没装对应版本的 cuDNN）这里如实返回 False，
+    UI 才不会把用户导向一个"选了也用不了"的选项。
+    """
+    return get_device() == "GPU" and "CUDAExecutionProvider" in get_available_providers()
 
 # Same as SenseVoice-python's sense_voice.py `languages` dict
 LANGUAGE_IDS = {"auto": 0, "zh": 3, "en": 4, "yue": 7, "ja": 11, "ko": 12, "nospeech": 13}
@@ -53,9 +69,16 @@ class ModelManager:
     def is_loaded(self) -> bool:
         return self._session is not None
 
-    def load(self, precision: str) -> float:
+    def load(self, precision: str, device_id: int = -1) -> float:
         """Load the given precision's model, return load time in ms.
-        If a model is already loaded, unload it first (idempotent)."""
+        If a model is already loaded, unload it first (idempotent).
+
+        device_id: -1 = CPU, 0 = 第一块 GPU. 透传给 sensevoice-onnx 内部的
+        OrtInferRuntimeSession —— 它自己会检查 CUDAExecutionProvider 是否真的
+        可用，不可用时自动回退 CPU 并打 warning，这里不用重复做判断（调用方
+        应该先看 gpu_available() 再决定要不要传 0，把"能不能用GPU"和"要不要
+        用GPU"这两件事分开：前者是环境事实，后者是用户选择）。
+        """
         if self.is_loaded:
             logger.info("Model already loaded (precision=%s), unloading first", self._precision)
             self.unload()
@@ -77,13 +100,16 @@ class ModelManager:
             str(self.resource_dir / "embedding.npy"),
             str(encoder_path),
             str(self.resource_dir / "chn_jpn_yue_eng_ko_spectok.bpe.model"),
-            device_id=-1,  # TODO: wire up GPU device id later if needed
+            device_id=device_id,
             intra_op_num_threads=4,
         )
         self._precision = precision
 
         elapsed_ms = (time.time() - start) * 1000
-        logger.info("Model loaded, precision=%s, took %.1fms", precision, elapsed_ms)
+        logger.info(
+            "Model loaded, precision=%s, device_id=%s, took %.1fms",
+            precision, device_id, elapsed_ms,
+        )
         return elapsed_ms
 
     def unload(self):
@@ -137,7 +163,8 @@ class ModelManager:
         }
 
 
-# Singleton, shared by the whole service process. resource_dir points at the
-# folder containing am.mvn / embedding.npy / *.onnx / *.bpe.model - see README
-# for how to obtain these (already downloaded once during local testing).
-manager = ModelManager(resource_dir="models")
+# Singleton, shared by the whole service process. resource_dir 来自
+# service_config.json 的 resource_dir 字段（见 config.py 的注释）——
+# 开发期是相对路径 "models"，打包后 C# 端会覆写成软件目录下的绝对路径，
+# 这里不用关心具体是哪种，Path() 两种都能正确处理。
+manager = ModelManager(resource_dir=config["resource_dir"])

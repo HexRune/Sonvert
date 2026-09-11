@@ -61,7 +61,9 @@ public class HistoryRepository : IHistoryRepository
         byte[]? translatedAudioWav,
         int? asrLatencyMs,
         int? translationLatencyMs,
-        int? ttsLatencyMs)
+        int? ttsLatencyMs,
+        bool ttsLatencyIsFirstByte = false,
+        int sourceIndex = 1)
     {
         var dateFolderName = timestamp.ToString("yyyy-MM-dd");
         var dayDirectory = Path.Combine(AppDbContext.HistoryRoot, dateFolderName);
@@ -106,6 +108,8 @@ public class HistoryRepository : IHistoryRepository
             AsrLatencyMs = asrLatencyMs,
             TranslationLatencyMs = translationLatencyMs,
             TtsLatencyMs = ttsLatencyMs,
+            TtsLatencyIsFirstByte = ttsLatencyIsFirstByte,
+            SourceIndex = sourceIndex,
         });
         await db.SaveChangesAsync();
     }

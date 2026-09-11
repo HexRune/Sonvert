@@ -61,6 +61,7 @@ public enum TtsApiKind
 {
     NotImplemented,
     Azure,
+    Aliyun,
 }
 
 /// <summary>语音合成第三方 API 的预设选项。
@@ -138,6 +139,17 @@ public partial class HomeViewModel : ViewModelBase
 
     [ObservableProperty]
     private AudioInputDeviceOption? _selectedAudioInputDevice;
+
+    // ---- 输入二（游戏内翻译场景，见对话里的方案确认）----
+
+    [ObservableProperty]
+    private bool _enableSecondInputSource;
+
+    [ObservableProperty]
+    private AudioInputDeviceOption? _selectedAudioInputDevice2;
+
+    [ObservableProperty]
+    private string _targetLanguage2;
 
     /// <summary>输入设备旁边那个迷你电平表的实时电平 [0,1]。
     /// 这路数据来自 _micLevelPreviewSource——一个专门为了"测个电平"而
@@ -302,8 +314,53 @@ public partial class HomeViewModel : ViewModelBase
     // ---- 语音合成板块 ----
     [ObservableProperty] private Character? _selectedCharacter;
     [ObservableProperty] private string _ttsProvider;
+
+    /// <summary>本地 TTS 引擎选择——"gpt-sovits"（默认）或 "indextts"。
+    /// 只在 IsTtsLocalSelected 为 true 时界面上才会显示这个选项，两个
+    /// 引擎用同一份角色库（NEUTRAL 参考音频），互相切换不需要重新配置
+    /// 角色。</summary>
+    [ObservableProperty] private string _ttsLocalEngine;
+
+    /// <summary>IndexTTS 的情绪参考强度（emo_alpha），0~1，只在选中
+    /// IndexTTS 引擎时的滑块上可调。每次开始翻译前调整都会实时生效——
+    /// 这个值是跟着每次合成请求一起传给 IndexTtsService 的，不是模型
+    /// 加载时才读一次的固定配置，不需要重启 IndexTTS 服务。</summary>
+    [ObservableProperty] private double _ttsEmoAlpha;
+
+    /// <summary>IndexTTS 用 2.0 还是 2.5——跟 ModelPrecision 一样的模式，
+    /// 改这里只是存设置，下次"开始翻译"重新拉起 IndexTTSService 才生效，
+    /// 不是实时热切换。</summary>
+    [ObservableProperty] private string _indexTtsVersion;
+
+    public bool IsGptSovitsEngineSelected
+    {
+        get => TtsLocalEngine == "gpt-sovits";
+        set { if (value) TtsLocalEngine = "gpt-sovits"; }
+    }
+
+    public bool IsIndexTtsEngineSelected
+    {
+        get => TtsLocalEngine == "indextts";
+        set { if (value) TtsLocalEngine = "indextts"; }
+    }
+
+    public bool IsQwenTtsEngineSelected
+    {
+        get => TtsLocalEngine == "qwen-tts";
+        set { if (value) TtsLocalEngine = "qwen-tts"; }
+    }
+
     [ObservableProperty] private string _ttsApiKey;
-    [ObservableProperty] private TtsModelOption? _selectedTtsModel;
+
+    // ---- 阿里云百炼专属字段（API Key 复用下面通用的 TtsApiKey，
+    // 不重复开一个） ----
+    [ObservableProperty] private string _ttsAliyunWebSocketUrl;
+    [ObservableProperty] private string _ttsAliyunModel;
+
+    /// <summary>手动填的 voice_id，方便测试——见 AppSettings.TTSAliyunManualVoiceId
+    /// 的注释。非空时 AliyunTtsService 会优先用这个，不去查角色身上的
+    /// AliyunVoiceId。</summary>
+    [ObservableProperty] private string _ttsAliyunManualVoiceId;    [ObservableProperty] private TtsModelOption? _selectedTtsModel;
     [ObservableProperty] private bool _isTtsApiKeyVisible;
 
     public ObservableCollection<Character> Characters { get; } = new();
@@ -316,11 +373,16 @@ public partial class HomeViewModel : ViewModelBase
         new TtsModelOption { DisplayName = "跳跃语音（待接入）", ModelId = "", Endpoint = "", Kind = TtsApiKind.NotImplemented },
         new TtsModelOption { DisplayName = "火山引擎语音合成（待接入）", ModelId = "", Endpoint = "", Kind = TtsApiKind.NotImplemented },
         new TtsModelOption { DisplayName = "Azure 语音合成", ModelId = "", Endpoint = "", Kind = TtsApiKind.Azure },
+        new TtsModelOption { DisplayName = "阿里云百炼（Qwen-Audio-TTS/CosyVoice）", ModelId = "", Endpoint = "", Kind = TtsApiKind.Aliyun },
     };
 
     /// <summary>当前选中的语音合成服务商是不是 Azure——控制区域/音色/
     /// 情绪跟随这几个 Azure 专属字段是否显示。</summary>
     public bool IsAzureTtsSelected => SelectedTtsModel?.Kind == TtsApiKind.Azure;
+
+    /// <summary>当前选中的语音合成服务商是不是阿里云百炼——控制
+    /// API Key/WebSocket 地址/模型名这几个阿里云专属字段是否显示。</summary>
+    public bool IsAliyunTtsSelected => SelectedTtsModel?.Kind == TtsApiKind.Aliyun;
 
     /// <summary>Azure 语音合成专属——区域，跟翻译那边不一样，这个是
     /// 必填的（直接拼进请求地址），所以下拉框做成不可编辑、只能从预置
@@ -360,6 +422,12 @@ public partial class HomeViewModel : ViewModelBase
         set { if (value) TtsProvider = "local"; }
     }
 
+    /// <summary>本地 TTS 引擎是不是选中了 IndexTTS——控制情绪参考强度
+    /// 滑块要不要显示（GPT-SoVITS 没有 emo_alpha 这个概念，选它的时候
+    /// 滑块应该隐藏，不是禁用，避免用户以为调了这个值对 GPT-SoVITS
+    /// 也有效果）。</summary>
+    public bool IsIndexTtsSelected => IsTtsLocalSelected && TtsLocalEngine == "indextts";
+
     public bool IsTtsApiSelected
     {
         get => TtsProvider == "api";
@@ -384,16 +452,37 @@ public partial class HomeViewModel : ViewModelBase
 
         _subtitleEnabled = settingsService.Current.SubtitleEnabled;
 
+        // 上面这行是直接给字段赋值（构造函数里读初始值），不会触发
+        // OnSubtitleEnabledChanged 这个 partial 回调——那个回调只在
+        // "通过 SubtitleEnabled 这个属性的 setter 赋值"时才会跑（比如
+        // 用户在界面上点开关）。如果上次退出时字幕是开着的，这次启动
+        // 读到的初始值就是 true，但窗口不会被 Show()，导致"开关显示是
+        // 开的，窗口却没出现"这个 bug——用户需要手动关一次再开一次，
+        // 才会真正走到 Show() 那条路径。这里补一句，构造完成后如果
+        // 初始值就是 true，主动补一次 Show()，让状态和实际显示保持一致。
+        if (_subtitleEnabled)
+        {
+            subtitleWindowService.Show();
+        }
+
         var s = settingsService.Current;
         _recognitionLanguage = s.RecognitionLanguage;
         _modelPrecision = s.ModelPrecision;
         _targetLanguage = s.TargetLanguage;
+        _enableSecondInputSource = s.EnableSecondInputSource;
+        _targetLanguage2 = s.TargetLanguage2;
         _glossaryEnabled = s.GlossaryEnabled;
         _translationProvider = s.TranslationProvider;
         _translationApiKey = s.TranslationApiKey;
         _translationApiRegion = s.TranslationApiRegion;
         _ttsProvider = s.TTSProvider;
+        _ttsLocalEngine = s.TTSLocalEngine;
+        _ttsEmoAlpha = s.TTSEmoAlpha;
+        _indexTtsVersion = s.IndexTtsVersion;
         _ttsApiKey = s.TTSApiKey;
+        _ttsAliyunWebSocketUrl = s.TTSAliyunWebSocketUrl;
+        _ttsAliyunModel = s.TTSAliyunModel;
+        _ttsAliyunManualVoiceId = s.TTSAliyunManualVoiceId;
         _ttsApiRegion = s.TTSApiRegion;
         _ttsEmotionFollowEnabled = s.TTSEmotionFollowEnabled;
         _enableTtsPlayback = s.EnableTtsPlayback;
@@ -417,9 +506,12 @@ public partial class HomeViewModel : ViewModelBase
             ? TranslationModelOptions.FirstOrDefault(m => m.Kind == TranslationApiKind.Azure)
             : TranslationModelOptions.FirstOrDefault(m =>
                 m.Kind == TranslationApiKind.OpenAiCompatible && m.ModelId == s.TranslationApiModel && m.ModelId != "");
-        _selectedTtsModel = s.TTSApiKind == "azure"
-            ? TtsModelOptions.FirstOrDefault(m => m.Kind == TtsApiKind.Azure)
-            : TtsModelOptions.FirstOrDefault(m => m.Kind == TtsApiKind.NotImplemented && m.ModelId == s.TTSApiModel && m.ModelId != "");
+        _selectedTtsModel = s.TTSApiKind switch
+        {
+            "azure" => TtsModelOptions.FirstOrDefault(m => m.Kind == TtsApiKind.Azure),
+            "aliyun" => TtsModelOptions.FirstOrDefault(m => m.Kind == TtsApiKind.Aliyun),
+            _ => TtsModelOptions.FirstOrDefault(m => m.Kind == TtsApiKind.NotImplemented && m.ModelId == s.TTSApiModel && m.ModelId != ""),
+        };
         _selectedEnglishVoice = EnglishVoiceOptions.FirstOrDefault(v => v.VoiceId == s.TTSApiVoiceEn);
         _selectedChineseVoice = ChineseVoiceOptions.FirstOrDefault(v => v.VoiceId == s.TTSApiVoiceZh);
 
@@ -445,6 +537,10 @@ public partial class HomeViewModel : ViewModelBase
         _selectedAudioInputDevice = AudioInputDevices.FirstOrDefault(d =>
             d.Kind.ToString() == s.InputDeviceKind && d.Id == s.InputDeviceId);
 
+        // 输入二共用同一份 AudioInputDevices 列表——现在只剩麦克风类
+        // 设备一种，两路本来就是同一套设备体系，不需要分开枚举。
+        _selectedAudioInputDevice2 = AudioInputDevices.FirstOrDefault(d => d.Id == s.InputDeviceId2);
+
         // 首页一打开（不管有没有开始翻译）就把迷你电平表跑起来，
         // 只要选中的设备存在——见 MicLevel 属性注释里的设计原因。
         if (_selectedAudioInputDevice is not null)
@@ -465,9 +561,7 @@ public partial class HomeViewModel : ViewModelBase
 
         try
         {
-            _micLevelPreviewSource = device.Kind == AudioInputDeviceKind.Loopback
-                ? CreateLoopbackPreviewSource(device.Id)
-                : CreateMicrophonePreviewSource(device.Id);
+            _micLevelPreviewSource = CreateMicrophonePreviewSource(device.Id);
         }
         catch (Exception)
         {
@@ -480,13 +574,6 @@ public partial class HomeViewModel : ViewModelBase
 
         _micLevelPreviewSource.DataAvailable += OnMicLevelPreviewDataAvailable;
         _micLevelPreviewSource.Start();
-    }
-
-    private static IAudioInputSource CreateLoopbackPreviewSource(string deviceId)
-    {
-        using var deviceEnumerator = new NAudio.CoreAudioApi.MMDeviceEnumerator();
-        var mmDevice = deviceEnumerator.GetDevice(deviceId);
-        return new LoopbackInputSource(mmDevice);
     }
 
     private static IAudioInputSource CreateMicrophonePreviewSource(string deviceId)
@@ -558,6 +645,55 @@ public partial class HomeViewModel : ViewModelBase
         // 换了输入设备，迷你电平表也要跟着换成新设备的电平，不然会
         // 一直显示上一个设备的响度，误导用户以为新选的设备没声音。
         StartMicLevelPreview(value);
+    }
+
+    partial void OnSelectedAudioInputDevice2Changed(AudioInputDeviceOption? value)
+    {
+        if (value is null) return;
+        _settingsService.Current.InputDeviceId2 = value.Id;
+        _ = _settingsService.SaveAsync();
+        // 输入二没有独立的迷你电平表——这条输入路径的设计初衷就不是
+        // "人对着它说话"，接一个响度指示条意义不大，见构造函数里
+        // LevelChanged 那处注释的同一个理由。
+    }
+
+    partial void OnEnableSecondInputSourceChanged(bool value)
+    {
+        _settingsService.Current.EnableSecondInputSource = value;
+        _ = _settingsService.SaveAsync();
+    }
+
+    public bool IsSubtitleWindowFilterAll
+    {
+        get => _settingsService.Current.SubtitleWindowSourceFilter == "All";
+        set { if (value) SetSubtitleWindowSourceFilter("All"); }
+    }
+
+    public bool IsSubtitleWindowFilterSource1
+    {
+        get => _settingsService.Current.SubtitleWindowSourceFilter == "Source1";
+        set { if (value) SetSubtitleWindowSourceFilter("Source1"); }
+    }
+
+    public bool IsSubtitleWindowFilterSource2
+    {
+        get => _settingsService.Current.SubtitleWindowSourceFilter == "Source2";
+        set { if (value) SetSubtitleWindowSourceFilter("Source2"); }
+    }
+
+    private void SetSubtitleWindowSourceFilter(string value)
+    {
+        _settingsService.Current.SubtitleWindowSourceFilter = value;
+        _ = _settingsService.SaveAsync();
+        OnPropertyChanged(nameof(IsSubtitleWindowFilterAll));
+        OnPropertyChanged(nameof(IsSubtitleWindowFilterSource1));
+        OnPropertyChanged(nameof(IsSubtitleWindowFilterSource2));
+    }
+
+    partial void OnTargetLanguage2Changed(string value)
+    {
+        _settingsService.Current.TargetLanguage2 = value;
+        _ = _settingsService.SaveAsync();
     }
 
     partial void OnEnableTtsPlaybackChanged(bool value)
@@ -651,12 +787,67 @@ public partial class HomeViewModel : ViewModelBase
         _ = _settingsService.SaveAsync();
     }
 
+    public bool IsIndexTtsV2Selected
+    {
+        get => IndexTtsVersion == "v2";
+        set { if (value) IndexTtsVersion = "v2"; }
+    }
+
+    public bool IsIndexTtsV25Selected
+    {
+        get => IndexTtsVersion == "v2.5";
+        set { if (value) IndexTtsVersion = "v2.5"; }
+    }
+
     partial void OnTtsProviderChanged(string value)
     {
         _settingsService.Current.TTSProvider = value;
         _ = _settingsService.SaveAsync();
         OnPropertyChanged(nameof(IsTtsLocalSelected));
         OnPropertyChanged(nameof(IsTtsApiSelected));
+        OnPropertyChanged(nameof(IsIndexTtsSelected));
+    }
+
+    partial void OnTtsLocalEngineChanged(string value)
+    {
+        _settingsService.Current.TTSLocalEngine = value;
+        _ = _settingsService.SaveAsync();
+        OnPropertyChanged(nameof(IsIndexTtsSelected));
+        OnPropertyChanged(nameof(IsGptSovitsEngineSelected));
+        OnPropertyChanged(nameof(IsIndexTtsEngineSelected));
+        OnPropertyChanged(nameof(IsQwenTtsEngineSelected));
+    }
+
+    partial void OnTtsEmoAlphaChanged(double value)
+    {
+        _settingsService.Current.TTSEmoAlpha = value;
+        _ = _settingsService.SaveAsync();
+    }
+
+    partial void OnIndexTtsVersionChanged(string value)
+    {
+        _settingsService.Current.IndexTtsVersion = value;
+        _ = _settingsService.SaveAsync();
+        OnPropertyChanged(nameof(IsIndexTtsV2Selected));
+        OnPropertyChanged(nameof(IsIndexTtsV25Selected));
+    }
+
+    partial void OnTtsAliyunWebSocketUrlChanged(string value)
+    {
+        _settingsService.Current.TTSAliyunWebSocketUrl = value;
+        _ = _settingsService.SaveAsync();
+    }
+
+    partial void OnTtsAliyunModelChanged(string value)
+    {
+        _settingsService.Current.TTSAliyunModel = value;
+        _ = _settingsService.SaveAsync();
+    }
+
+    partial void OnTtsAliyunManualVoiceIdChanged(string value)
+    {
+        _settingsService.Current.TTSAliyunManualVoiceId = value;
+        _ = _settingsService.SaveAsync();
     }
 
     partial void OnTtsApiKeyChanged(string value)
@@ -707,13 +898,19 @@ public partial class HomeViewModel : ViewModelBase
     {
         if (value is null) return;
         _settingsService.Current.TTSApiModel = value.ModelId;
-        _settingsService.Current.TTSApiKind = value.Kind == TtsApiKind.Azure ? "azure" : string.Empty;
+        _settingsService.Current.TTSApiKind = value.Kind switch
+        {
+            TtsApiKind.Azure => "azure",
+            TtsApiKind.Aliyun => "aliyun",
+            _ => string.Empty,
+        };
+        OnPropertyChanged(nameof(IsAzureTtsSelected));
+        OnPropertyChanged(nameof(IsAliyunTtsSelected));
         // Endpoint 暂时不写：Azure 的地址是"区域+固定域名"拼出来的，
         // 不是一个固定 Endpoint 字符串；占位选项（跳跃语音/火山引擎）
         // 也还没有真实地址可填，等真正确定第二个可用服务商时再决定
         // 要不要给 Endpoint 这个字段派上用场。
         _ = _settingsService.SaveAsync();
-        OnPropertyChanged(nameof(IsAzureTtsSelected));
     }
 
     partial void OnSelectedCharacterChanged(Character? value)
