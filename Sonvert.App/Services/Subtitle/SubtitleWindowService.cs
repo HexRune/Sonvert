@@ -76,4 +76,25 @@ public class SubtitleWindowService : ISubtitleWindowService
             }
         }
     }
+
+    /// <summary>跟 Unlock() 对称——首页锁定开关打开时调用。跟悬浮字幕
+    /// 窗口自己 Ctrl+Shift+L 快捷键触发的 LockCommand 是同一条路径
+    /// （SubtitleWindow.axaml.cs 里那处调用），这里走 ViewModel 的
+    /// LockCommand 而不是新开一个方法，避免两处各写一份"设状态+切
+    /// 点透"的逻辑。</summary>
+    public void Lock()
+    {
+        _viewModel.LockCommand.Execute(null);
+
+        if (_window is not null)
+        {
+            var hwnd = _window.TryGetPlatformHandle()?.Handle ?? System.IntPtr.Zero;
+            if (hwnd != System.IntPtr.Zero)
+            {
+                Win32Interop.SetClickThrough(hwnd, true);
+            }
+        }
+    }
+
+    public bool IsLocked => _viewModel.IsLocked;
 }

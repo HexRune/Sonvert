@@ -230,8 +230,16 @@ public class RecognitionSessionService : IRecognitionSessionService
                 // 直接截断，避免引入量化偏差）。
                 var pcmBytes = ToPcm16Bytes(samples);
 
+                // 按自己的 SourceIndex 读对应的识别语言设置——这是修复
+                // "输入二的英文被误识别成中文"的关键：两路会话共用同一个
+                // RecognitionLanguage 是之前的 bug，SenseVoice 的 /recognize
+                // 本来就支持逐次指定 language，只是这里之前没读对字段。
+                var recognitionLanguage = SourceIndex == 2
+                    ? _settingsService.Current.RecognitionLanguage2
+                    : _settingsService.Current.RecognitionLanguage;
+
                 var stopwatch = System.Diagnostics.Stopwatch.StartNew();
-                var result = await _senseVoiceService.RecognizeAsync(pcmBytes, _settingsService.Current.RecognitionLanguage);
+                var result = await _senseVoiceService.RecognizeAsync(pcmBytes, recognitionLanguage);
                 stopwatch.Stop();
 
                 if (!string.IsNullOrEmpty(result.Text))

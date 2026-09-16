@@ -25,15 +25,20 @@ public partial class MainViewModel : ViewModelBase
 
     private readonly HistoryViewModel _historyViewModel;
 
+    // 图标码位选的都是 Segoe MDL2 Assets 里语义上最贴近标题的现成符号：
+    // Home(主页)、Microphone(实时翻译，翻译的入口就是"说话"这个动作)、
+    // Contact(声音克隆，克隆的是"一个人"的声音)、People(发声角色，
+    // 对应的是一批可选的角色)、History(历史记录)、Setting(设置)、
+    // Info(关于)。
     public ObservableCollection<NavItem> NavItems { get; } = new()
     {
-        new NavItem { Title = "主页" },
-        new NavItem { Title = "实时翻译" },
-        new NavItem { Title = "声音克隆" },
-        new NavItem { Title = "发声角色" },
-        new NavItem { Title = "历史记录" },
-        new NavItem { Title = "设置" },
-        new NavItem { Title = "关于" },
+        new NavItem { Title = "主页", IconGlyph = "\uE80F" },
+        new NavItem { Title = "实时翻译", IconGlyph = "\uE720" },
+        new NavItem { Title = "声音克隆", IconGlyph = "\uE77B" },
+        new NavItem { Title = "发声角色", IconGlyph = "\uE716" },
+        new NavItem { Title = "历史记录", IconGlyph = "\uE81C" },
+        new NavItem { Title = "设置", IconGlyph = "\uE713" },
+        new NavItem { Title = "关于", IconGlyph = "\uE946" },
     };
 
     [ObservableProperty]

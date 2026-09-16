@@ -151,6 +151,12 @@ public partial class HomeViewModel : ViewModelBase
     [ObservableProperty]
     private string _targetLanguage2;
 
+    /// <summary>输入二的识别语言，独立于 RecognitionLanguage——复用同一套
+    /// RecognitionLanguageOptions（auto/zh/en），跟输入一的识别语言选择器
+    /// 是完全独立的两个下拉框，各自绑各自的设置字段。</summary>
+    [ObservableProperty]
+    private string _recognitionLanguage2;
+
     /// <summary>输入设备旁边那个迷你电平表的实时电平 [0,1]。
     /// 这路数据来自 _micLevelPreviewSource——一个专门为了"测个电平"而
     /// 单独起的轻量采集实例，跟真正翻译会话用的 IAudioInputSource
@@ -176,6 +182,22 @@ public partial class HomeViewModel : ViewModelBase
     public bool IsMicSegment3On => MicLevel > 0.55;
     public bool IsMicSegment4On => MicLevel > 0.75;
     public bool IsMicSegment5On => MicLevel > 0.9;
+
+    /// <summary>输入二设备旁边的迷你电平表——跟 MicLevel/
+    /// _micLevelPreviewSource 是完全独立的一份，同样的道理：输入二
+    /// 也是真实的采集设备（虚拟麦克风或者另一个物理麦克风），配置的
+    /// 时候同样需要能看一眼"这个设备是不是真的有声音"，只有输入一
+    /// 有电平表、输入二没有，会让人怀疑输入二是不是没接好。</summary>
+    [ObservableProperty]
+    private double _mic2Level;
+
+    private IAudioInputSource? _micLevel2PreviewSource;
+
+    public bool IsMic2Segment1On => Mic2Level > 0.15;
+    public bool IsMic2Segment2On => Mic2Level > 0.35;
+    public bool IsMic2Segment3On => Mic2Level > 0.55;
+    public bool IsMic2Segment4On => Mic2Level > 0.75;
+    public bool IsMic2Segment5On => Mic2Level > 0.9;
 
     [ObservableProperty]
     private bool _enableTtsPlayback;
@@ -235,6 +257,16 @@ public partial class HomeViewModel : ViewModelBase
         new LanguageOption { Code = "zh", DisplayName = "中文" },
         new LanguageOption { Code = "en", DisplayName = "英文" },
     };
+
+    /// <summary>目标语言下拉框实际展示哪一份选项列表，取决于当前翻译
+    /// 走本地还是 API——这两张卡（语音识别、麦克风输入2）现在都直接
+    /// 展示"目标语言"，不再由用户先去翻译卡切换 Provider 才能看到
+    /// 对应的选项范围，所以需要一个跟着 TranslationProvider 联动的
+    /// 计算属性，而不是让这两张卡各自猜一份固定列表。绑定的还是同一个
+    /// TargetLanguage 设置值，只是"能选的范围"跟着 Provider 变——
+    /// 这个设计原因跟 ApiTargetLanguageOptions 注释里说的一样。</summary>
+    public ObservableCollection<LanguageOption> CurrentTargetLanguageOptions =>
+        IsTranslationApiSelected ? ApiTargetLanguageOptions : TargetLanguageOptions;
 
     /// <summary>翻译服务商预设——DeepSeek/豆包走 OpenAI 兼容协议，
     /// Azure 翻译走专用协议（见 AzureTranslationService），后续要加新
@@ -451,6 +483,10 @@ public partial class HomeViewModel : ViewModelBase
         _liveTranslationViewModel = liveTranslationViewModel;
 
         _subtitleEnabled = settingsService.Current.SubtitleEnabled;
+        // 用服务当前的真实锁定状态做初始值，而不是假设"每次打开首页
+        // 都是锁定的"——字幕窗口是常驻单例 ViewModel，状态跨会话保留，
+        // 首页只是把已有状态展示出来。
+        _isSubtitleWindowLocked = subtitleWindowService.IsLocked;
 
         // 上面这行是直接给字段赋值（构造函数里读初始值），不会触发
         // OnSubtitleEnabledChanged 这个 partial 回调——那个回调只在
@@ -471,6 +507,7 @@ public partial class HomeViewModel : ViewModelBase
         _targetLanguage = s.TargetLanguage;
         _enableSecondInputSource = s.EnableSecondInputSource;
         _targetLanguage2 = s.TargetLanguage2;
+        _recognitionLanguage2 = s.RecognitionLanguage2;
         _glossaryEnabled = s.GlossaryEnabled;
         _translationProvider = s.TranslationProvider;
         _translationApiKey = s.TranslationApiKey;
@@ -548,6 +585,15 @@ public partial class HomeViewModel : ViewModelBase
             StartMicLevelPreview(_selectedAudioInputDevice);
         }
 
+        // 输入二同理——见 Mic2Level 属性注释。不受 EnableSecondInputSource
+        // 开关影响：卡片里"输入设备"这一行本身就一直可见（只有"识别
+        // 语言/目标语言"那两个下拉框在开关关闭时会隐藏），电平表跟着
+        // 设备走就行，不用额外判断开关状态。
+        if (_selectedAudioInputDevice2 is not null)
+        {
+            StartMic2LevelPreview(_selectedAudioInputDevice2);
+        }
+
         _ = RefreshCharactersAsync();
     }
 
@@ -600,6 +646,44 @@ public partial class HomeViewModel : ViewModelBase
         OnPropertyChanged(nameof(IsMicSegment5On));
     }
 
+    /// <summary>输入二那一路迷你电平表的启动/重启，跟
+    /// StartMicLevelPreview 完全对称，理由见 Mic2Level 属性注释——
+    /// 两路是各自独立的 IAudioInputSource 实例，互不干扰。</summary>
+    private void StartMic2LevelPreview(AudioInputDeviceOption device)
+    {
+        _micLevel2PreviewSource?.Dispose();
+
+        try
+        {
+            _micLevel2PreviewSource = CreateMicrophonePreviewSource(device.Id);
+        }
+        catch (Exception)
+        {
+            // 理由同 StartMicLevelPreview：设备可能已被拔掉/被其他程序
+            // 独占，电平表拿不到数据就静默放弃，不影响首页其他功能。
+            _micLevel2PreviewSource = null;
+            return;
+        }
+
+        _micLevel2PreviewSource.DataAvailable += OnMic2LevelPreviewDataAvailable;
+        _micLevel2PreviewSource.Start();
+    }
+
+    private void OnMic2LevelPreviewDataAvailable(object? sender, float[] samples)
+    {
+        var level = AudioLevelCalculator.CalculateLevel(samples);
+        Dispatcher.UIThread.Post(() => Mic2Level = level);
+    }
+
+    partial void OnMic2LevelChanged(double value)
+    {
+        OnPropertyChanged(nameof(IsMic2Segment1On));
+        OnPropertyChanged(nameof(IsMic2Segment2On));
+        OnPropertyChanged(nameof(IsMic2Segment3On));
+        OnPropertyChanged(nameof(IsMic2Segment4On));
+        OnPropertyChanged(nameof(IsMic2Segment5On));
+    }
+
     private void OnLiveTranslationViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName == nameof(LiveTranslationViewModel.IsRunning))
@@ -622,10 +706,19 @@ public partial class HomeViewModel : ViewModelBase
         else _subtitleWindowService.Hide();
     }
 
-    [RelayCommand]
-    private void UnlockSubtitle()
+    /// <summary>字幕窗口"解锁字幕"按钮换成了设计图里的锁定开关——
+    /// 开=锁定（默认，字幕窗口点击穿透，不会被误触拖动），关=解锁
+    /// （可以拖动/调整字幕窗口）。两个方向都要真正调用
+    /// ISubtitleWindowService.Lock()/Unlock()，不能只是本地翻个
+    /// bool——底层还要联动 Win32 点透状态，见 SubtitleWindowService
+    /// 里 Lock()/Unlock() 的注释。</summary>
+    [ObservableProperty]
+    private bool _isSubtitleWindowLocked;
+
+    partial void OnIsSubtitleWindowLockedChanged(bool value)
     {
-        _subtitleWindowService.Unlock();
+        if (value) _subtitleWindowService.Lock();
+        else _subtitleWindowService.Unlock();
     }
 
     partial void OnSelectedOutputDeviceChanged(AudioOutputDeviceOption? value)
@@ -652,9 +745,10 @@ public partial class HomeViewModel : ViewModelBase
         if (value is null) return;
         _settingsService.Current.InputDeviceId2 = value.Id;
         _ = _settingsService.SaveAsync();
-        // 输入二没有独立的迷你电平表——这条输入路径的设计初衷就不是
-        // "人对着它说话"，接一个响度指示条意义不大，见构造函数里
-        // LevelChanged 那处注释的同一个理由。
+
+        // 换了输入二的设备，迷你电平表也要跟着换——理由跟输入一那边
+        // OnSelectedAudioInputDeviceChanged 里的注释一样。
+        StartMic2LevelPreview(value);
     }
 
     partial void OnEnableSecondInputSourceChanged(bool value)
@@ -663,36 +757,40 @@ public partial class HomeViewModel : ViewModelBase
         _ = _settingsService.SaveAsync();
     }
 
-    public bool IsSubtitleWindowFilterAll
+    /// <summary>字幕窗口"显示来源"从三个竖排按钮改成一个下拉框——
+    /// 窄列（字幕窗口卡只分到 0.8fr 宽度）里三个按钮堆起来的高度比
+    /// 别的卡片明显多出一截，是这一行整体没法做到统一高度的主要原因，
+    /// 换成下拉框只占一行，跟旁边"显示字幕"开关那一行高度一致。
+    /// 复用 LanguageOption（Code/DisplayName 两个字段够用，不用为了
+    /// 这一个下拉框专门再定义一个类型）。</summary>
+    public ObservableCollection<LanguageOption> SubtitleWindowFilterOptions { get; } = new()
     {
-        get => _settingsService.Current.SubtitleWindowSourceFilter == "All";
-        set { if (value) SetSubtitleWindowSourceFilter("All"); }
-    }
+        new LanguageOption { Code = "All", DisplayName = "全部" },
+        new LanguageOption { Code = "Source1", DisplayName = "仅输入一" },
+        new LanguageOption { Code = "Source2", DisplayName = "仅输入二" },
+    };
 
-    public bool IsSubtitleWindowFilterSource1
+    public string SelectedSubtitleWindowFilter
     {
-        get => _settingsService.Current.SubtitleWindowSourceFilter == "Source1";
-        set { if (value) SetSubtitleWindowSourceFilter("Source1"); }
-    }
-
-    public bool IsSubtitleWindowFilterSource2
-    {
-        get => _settingsService.Current.SubtitleWindowSourceFilter == "Source2";
-        set { if (value) SetSubtitleWindowSourceFilter("Source2"); }
-    }
-
-    private void SetSubtitleWindowSourceFilter(string value)
-    {
-        _settingsService.Current.SubtitleWindowSourceFilter = value;
-        _ = _settingsService.SaveAsync();
-        OnPropertyChanged(nameof(IsSubtitleWindowFilterAll));
-        OnPropertyChanged(nameof(IsSubtitleWindowFilterSource1));
-        OnPropertyChanged(nameof(IsSubtitleWindowFilterSource2));
+        get => _settingsService.Current.SubtitleWindowSourceFilter;
+        set
+        {
+            if (_settingsService.Current.SubtitleWindowSourceFilter == value) return;
+            _settingsService.Current.SubtitleWindowSourceFilter = value;
+            _ = _settingsService.SaveAsync();
+            OnPropertyChanged();
+        }
     }
 
     partial void OnTargetLanguage2Changed(string value)
     {
         _settingsService.Current.TargetLanguage2 = value;
+        _ = _settingsService.SaveAsync();
+    }
+
+    partial void OnRecognitionLanguage2Changed(string value)
+    {
+        _settingsService.Current.RecognitionLanguage2 = value;
         _ = _settingsService.SaveAsync();
     }
 
@@ -747,6 +845,7 @@ public partial class HomeViewModel : ViewModelBase
         _ = _settingsService.SaveAsync();
         OnPropertyChanged(nameof(IsTranslationLocalSelected));
         OnPropertyChanged(nameof(IsTranslationApiSelected));
+        OnPropertyChanged(nameof(CurrentTargetLanguageOptions));
     }
 
     partial void OnTranslationApiKeyChanged(string value)

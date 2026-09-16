@@ -203,62 +203,67 @@
   </UserControl.Styles>
 
   <ScrollViewer>
-    <StackPanel Margin="32,24" MaxWidth="900" Spacing="4">
+    <!-- MaxWidth 从 900 放宽到 1280——原来两列布局 900 够用，现在顶部
+         是三张卡片并排（含两个下拉框+一个语言箭头行），900 会挤得
+         每张卡片没有余地展示内部的多列内容，1280 留出了足够宽度。 -->
+    <StackPanel Margin="32,24" MaxWidth="1280" Spacing="4">
 
       <TextBlock Text="首页"
                  FontSize="25"
                  Foreground="{StaticResource TextSecondaryBrush}"
                  Margin="0,0,0,20" />
 
-      <!-- ===== 两列通道条布局 =====
-           左列：AUDIO IN(语音识别) + AUDIO OUT(语音合成) —— 音频处理链路
-           右列：TRANSLATE(翻译) + DISPLAY(字幕) —— 文本处理链路
-           两列各自内部用 Spacing 控制卡片间距，列之间用 Grid 的
-           ColumnSpacing 控制，保证左右列顶部对齐。 -->
-      <!-- 会话运行中，整块设置区域禁用——IsEnabled 绑到 CanEditSettings，
-           Avalonia Fluent 主题会自动把禁用的控件变灰、拦截交互，
-           不需要给每个下拉框/开关/标签页单独处理禁用样式。按最终确定的
-           方案，这里不额外加"已锁定"的提示文案，纯粹靠变灰传达状态。 -->
-      <Grid ColumnDefinitions="*,*" ColumnSpacing="16" IsEnabled="{Binding CanEditSettings}">
+      <!-- ===== 两行通道布局 =====
+           第一行：麦克风输入 / 麦克风输入2 / 悬浮字幕——都是"这一路
+           输入/展示怎么配置"这一类信息，字幕窗口没有设备/语言这类需要
+           较宽控件的字段，列宽分配得比另外两个窄（1.3*,1.3*,0.8*）。
+           第二行：翻译 / 语音合成——两张卡片选项最多，各占半行宽度，
+           内部尽量用多列网格排列控件而不是纵向堆叠，方便以后继续加
+           选项。会话运行中，两行整体禁用——IsEnabled 绑到
+           CanEditSettings，Avalonia Fluent 主题会自动把禁用的控件变灰、
+           拦截交互，不需要给每个下拉框/开关/标签页单独处理禁用样式。 -->
+      <Grid RowDefinitions="Auto,Auto" IsEnabled="{Binding CanEditSettings}">
 
-        <!-- ===== 左列：音频链路 ===== -->
-        <StackPanel Grid.Column="0" Spacing="16">
+        <Grid Grid.Row="0" ColumnDefinitions="1.3*,1.3*,0.8*" ColumnSpacing="16" Margin="0,0,0,10">
+
+          <!-- 三张卡片都写死 Height="190"——比上一版的 230 更紧凑
+               （去掉英文小标签、行间距从 14 收到 10 之后，三行内容
+               本身需要的高度也变矮了，230 显得空）。这一行没有 TabBody
+               那种"本地/API 切换导致内容高度差很多"的问题，唯一的变量
+               是字幕窗口卡的"显示来源"行（只有开了输入二才显示），190
+               是按"字幕窗口卡三行都显示"这个最高的情况留出来的，
+               另外两张卡内容更短，会有一点空白，用固定高度换三张卡
+               顶部对齐、高度一致，不随开关状态跳动。 -->
 
           <!-- ===== 语音识别 ===== -->
-          <Border Classes="SettingsCard">
-            <StackPanel Spacing="14">
-              <StackPanel Spacing="2">
-                <TextBlock Classes="ChannelEyebrow" Text="AUDIO IN" />
-                <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                  <Ellipse Classes="StatusDot" Classes.Active="{Binding IsSessionRunning}" />
-                  <TextBlock Classes="SectionTitle" Text="语音识别" />
+          <Border Grid.Column="0" Classes="SettingsCard" Height="190">
+            <StackPanel Spacing="10">
+              <!-- 模型精度(fp32/int8)从单独一整行挪到标题行右侧——
+                   这两个小按钮跟"识别语言"这类核心配置项不是一个量级
+                   的东西（大多数人开箱即用不用管），放title行省下一整行
+                   的高度，也符合"重要的配置项才单独占一行"这个原则。 -->
+              <Grid ColumnDefinitions="*,Auto">
+                <StackPanel Grid.Column="0" Spacing="2">
+                  <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                    <Ellipse Classes="StatusDot" Classes.Active="{Binding IsSessionRunning}" />
+                    <TextBlock Classes="SectionTitle" Text="麦克风输入" />
+                  </StackPanel>
                 </StackPanel>
-              </StackPanel>
-
-              <Grid Classes="FieldRow" ColumnDefinitions="*,Auto">
-                <TextBlock Grid.Column="0" Classes="FieldLabel" Text="识别语言" VerticalAlignment="Center" />
-                <ComboBox Grid.Column="1"
-                          ItemsSource="{Binding RecognitionLanguageOptions}"
-                          SelectedValue="{Binding RecognitionLanguage}"
-                          SelectedValueBinding="{Binding Code}">
-                  <ComboBox.ItemTemplate>
-                    <DataTemplate x:DataType="vm:LanguageOption">
-                      <TextBlock Text="{Binding DisplayName}" />
-                    </DataTemplate>
-                  </ComboBox.ItemTemplate>
-                </ComboBox>
-              </Grid>
-
-              <Grid Classes="FieldRow" ColumnDefinitions="*,Auto">
-                <TextBlock Grid.Column="0" Classes="FieldLabel" Text="模型精度" VerticalAlignment="Center" />
-                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Bottom">
                   <RadioButton Classes="SegmentButton" GroupName="ModelPrecision"
-                               Content="fp32" IsChecked="{Binding IsFp32Selected}" />
+                               Content="fp32" Padding="10,4" FontSize="11"
+                               IsChecked="{Binding IsFp32Selected}" />
                   <RadioButton Classes="SegmentButton" GroupName="ModelPrecision"
-                               Content="int8" IsChecked="{Binding IsInt8Selected}" />
+                               Content="int8" Padding="10,4" FontSize="11"
+                               IsChecked="{Binding IsInt8Selected}" />
                 </StackPanel>
               </Grid>
 
+              <!-- 输入设备行放到识别语言/目标语言前面——之前这张卡是
+                   "识别语言→目标语言"在上、"输入设备"在下，麦克风输入2
+                   卡是"输入设备"在上、"识别语言→目标语言"在下，两张卡
+                   顺序不一致（用户发现了这个问题）。统一改成跟输入二
+                   一样、设备在上，跟设计图的顺序也对得上。 -->
               <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
                 <TextBlock Grid.Column="0" Classes="FieldLabel" Text="输入设备" VerticalAlignment="Center" />
 
@@ -277,7 +282,7 @@
                   <Rectangle Classes="MicSegment Red" Classes.Active="{Binding IsMicSegment5On}" />
                 </StackPanel>
 
-                <ComboBox Grid.Column="2" Width="220"
+                <ComboBox Grid.Column="2" Width="180"
                           ItemsSource="{Binding AudioInputDevices}"
                           SelectedItem="{Binding SelectedAudioInputDevice}">
                   <ComboBox.ItemTemplate>
@@ -286,6 +291,53 @@
                     </DataTemplate>
                   </ComboBox.ItemTemplate>
                 </ComboBox>
+              </Grid>
+
+              <!-- 识别语言 + 目标语言合并成一行，中间加箭头——跟之前
+                   商量好的设计图保持一致（之前落地代码时漏掉了这一步，
+                   一直是"识别语言"单独一行，没有目标语言）。目标语言
+                   之前独占在"翻译"卡的本地/API 标签内容里，现在跟输入
+                   二一样挪到输入卡片本身，"识别->目标"两个方向性字段
+                   放在一起才符合直觉，"翻译"卡改成只管"用什么引擎/
+                   服务商翻译"这一层，不再管"翻成什么语言"。
+                   两个 ComboBox 从"Width=NaN + Stretch 撑满整列"改成
+                   固定 Width="130"——这两个下拉框选项就"中文/英文/自动"
+                   这几个字，撑满整列（原来接近卡片一半宽度）完全是
+                   浪费。固定宽度之后没有再显式设 HorizontalAlignment，
+                   StackPanel 里的子元素默认对齐方式是 Stretch，而
+                   Stretch 遇到显式 Width 时的实际效果是"在可用空间内
+                   居中"，所以两个下拉框会自动在各自那一半列宽里居中，
+                   两侧留出空白，中间箭头附近也会显得更透气，不用再
+                   额外写 Margin 去手动挤出空白。 -->
+              <Grid ColumnDefinitions="*,Auto,*" ColumnSpacing="6">
+                <StackPanel Grid.Column="0">
+                  <TextBlock Classes="FieldLabel" Text="识别语言" />
+                  <ComboBox Width="130"
+                            ItemsSource="{Binding RecognitionLanguageOptions}"
+                            SelectedValue="{Binding RecognitionLanguage}"
+                            SelectedValueBinding="{Binding Code}">
+                    <ComboBox.ItemTemplate>
+                      <DataTemplate x:DataType="vm:LanguageOption">
+                        <TextBlock Text="{Binding DisplayName}" />
+                      </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                  </ComboBox>
+                </StackPanel>
+                <TextBlock Grid.Column="1" Text="&#8594;" VerticalAlignment="Bottom"
+                           Margin="0,0,0,7" Foreground="{StaticResource TextSecondaryBrush}" />
+                <StackPanel Grid.Column="2">
+                  <TextBlock Classes="FieldLabel" Text="目标语言" />
+                  <ComboBox Width="130"
+                            ItemsSource="{Binding CurrentTargetLanguageOptions}"
+                            SelectedValue="{Binding TargetLanguage}"
+                            SelectedValueBinding="{Binding Code}">
+                    <ComboBox.ItemTemplate>
+                      <DataTemplate x:DataType="vm:LanguageOption">
+                        <TextBlock Text="{Binding DisplayName}" />
+                      </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                  </ComboBox>
+                </StackPanel>
               </Grid>
             </StackPanel>
           </Border>
@@ -297,23 +349,41 @@
                语音合成/播放，只出字幕——原因见对话里的方案确认：
                合成语音播出来会跟游戏本身的声音叠在一起，队友也可能
                听到翻译成中文的内容，先只做字幕。 -->
-          <Border Classes="SettingsCard">
-            <StackPanel Spacing="14">
-              <Grid Classes="FieldRow" ColumnDefinitions="*,Auto">
-                <StackPanel Grid.Column="0">
-                  <TextBlock Classes="FieldLabel" Text="输入二（游戏内翻译）" />
-                  <TextBlock Text="开启后可以再接一路独立的麦克风类输入，只出字幕，不合成语音"
-                             Foreground="{StaticResource TextSecondaryBrush}"
-                             FontSize="11" TextWrapping="Wrap" />
+          <Border Grid.Column="1" Classes="SettingsCard" Height="190">
+            <StackPanel Spacing="10">
+              <!-- 标题行改成跟其他卡片一样的 ChannelEyebrow+状态点样式，
+                   去掉原来"开启后可以再接一路独立的麦克风类输入……"这行
+                   说明文字——两行的说明文字在窄一点的卡片里会占掉小半张
+                   卡的高度，图标+标题已经够清楚，不需要靠一段话解释。 -->
+              <Grid ColumnDefinitions="*,Auto">
+                <StackPanel Grid.Column="0" Spacing="2">
+                  <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                    <Ellipse Classes="StatusDot" Classes.Active="{Binding IsSessionRunning}" />
+                    <TextBlock Classes="SectionTitle" Text="麦克风输入2" />
+                  </StackPanel>
                 </StackPanel>
                 <ToggleSwitch Grid.Column="1" IsChecked="{Binding EnableSecondInputSource}"
-                              OnContent="{x:Null}" OffContent="{x:Null}" />
+                              OnContent="{x:Null}" OffContent="{x:Null}"
+                              VerticalAlignment="Bottom" />
               </Grid>
 
-              <StackPanel Spacing="10" IsVisible="{Binding EnableSecondInputSource}">
-                <Grid ColumnDefinitions="*,Auto">
+              <StackPanel Spacing="8" IsVisible="{Binding EnableSecondInputSource}">
+                <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
                   <TextBlock Grid.Column="0" Classes="FieldLabel" Text="输入设备" VerticalAlignment="Center" />
-                  <ComboBox Grid.Column="1" Width="220"
+
+                  <!-- 跟输入一同一套迷你电平表，绑定 Mic2Level 那一路——
+                       见 HomeViewModel 里 Mic2Level/_micLevel2PreviewSource
+                       的注释。 -->
+                  <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="2"
+                              VerticalAlignment="Center">
+                    <Rectangle Classes="MicSegment Green" Classes.Active="{Binding IsMic2Segment1On}" />
+                    <Rectangle Classes="MicSegment Green" Classes.Active="{Binding IsMic2Segment2On}" />
+                    <Rectangle Classes="MicSegment Green" Classes.Active="{Binding IsMic2Segment3On}" />
+                    <Rectangle Classes="MicSegment Amber" Classes.Active="{Binding IsMic2Segment4On}" />
+                    <Rectangle Classes="MicSegment Red" Classes.Active="{Binding IsMic2Segment5On}" />
+                  </StackPanel>
+
+                  <ComboBox Grid.Column="2" Width="180"
                             ItemsSource="{Binding AudioInputDevices}"
                             SelectedItem="{Binding SelectedAudioInputDevice2}">
                     <ComboBox.ItemTemplate>
@@ -324,34 +394,283 @@
                   </ComboBox>
                 </Grid>
 
-                <Grid ColumnDefinitions="*,Auto">
-                  <TextBlock Grid.Column="0" Classes="FieldLabel" Text="目标语言" VerticalAlignment="Center" />
-                  <ComboBox Grid.Column="1"
-                            ItemsSource="{Binding TargetLanguageOptions}"
-                            SelectedValue="{Binding TargetLanguage2}"
-                            SelectedValueBinding="{Binding Code}">
-                    <ComboBox.ItemTemplate>
-                      <DataTemplate x:DataType="vm:LanguageOption">
-                        <TextBlock Text="{Binding DisplayName}" />
-                      </DataTemplate>
-                    </ComboBox.ItemTemplate>
-                  </ComboBox>
+                <!-- 识别语言 + 目标语言合并成一行、中间加箭头——跟输入一
+                     那张卡改成同一个样式，也是跟最初商量好的设计图对齐
+                     补上的一步。目标语言现在也用 CurrentTargetLanguageOptions
+                     （跟着翻译 Provider 联动的那份），而不是原来写死的
+                     TargetLanguageOptions（只有 zh/en）——两路输入共用
+                     同一套翻译后端，选项范围没道理不一致。 -->
+                <Grid ColumnDefinitions="*,Auto,*" ColumnSpacing="6">
+                  <StackPanel Grid.Column="0">
+                    <TextBlock Classes="FieldLabel" Text="识别语言" />
+                    <ComboBox Width="130"
+                              ItemsSource="{Binding RecognitionLanguageOptions}"
+                              SelectedValue="{Binding RecognitionLanguage2}"
+                              SelectedValueBinding="{Binding Code}">
+                      <ComboBox.ItemTemplate>
+                        <DataTemplate x:DataType="vm:LanguageOption">
+                          <TextBlock Text="{Binding DisplayName}" />
+                        </DataTemplate>
+                      </ComboBox.ItemTemplate>
+                    </ComboBox>
+                  </StackPanel>
+                  <TextBlock Grid.Column="1" Text="&#8594;" VerticalAlignment="Bottom"
+                             Margin="0,0,0,7" Foreground="{StaticResource TextSecondaryBrush}" />
+                  <StackPanel Grid.Column="2">
+                    <TextBlock Classes="FieldLabel" Text="目标语言" />
+                    <ComboBox Width="130"
+                              ItemsSource="{Binding CurrentTargetLanguageOptions}"
+                              SelectedValue="{Binding TargetLanguage2}"
+                              SelectedValueBinding="{Binding Code}">
+                      <ComboBox.ItemTemplate>
+                        <DataTemplate x:DataType="vm:LanguageOption">
+                          <TextBlock Text="{Binding DisplayName}" />
+                        </DataTemplate>
+                      </ComboBox.ItemTemplate>
+                    </ComboBox>
+                  </StackPanel>
                 </Grid>
               </StackPanel>
             </StackPanel>
           </Border>
 
-          <!-- ===== 语音合成 ===== -->
-          <Border Classes="SettingsCard">
-            <StackPanel Spacing="14">
-              <StackPanel Spacing="2">
-                <TextBlock Classes="ChannelEyebrow" Text="AUDIO OUT" />
+          <!-- ===== 悬浮字幕 =====
+               挪到跟两路麦克风输入同一行，列宽比另外两张窄（见外层
+               ColumnDefinitions="1.3*,1.3*,0.8*"的注释）——这张卡没有
+               设备/语言这类需要较宽下拉框的字段，窄一点也够用，省下的
+               宽度留给下面翻译/语音合成两张卡片。"显示来源"这排按钮
+               挪到了"锁定窗口"下面（原来在它上面），窄列放不下横排
+               三个 BrowserTab，改成纵向堆叠的 SegmentButton。 -->
+          <Border Grid.Column="2" Classes="SettingsCard" Height="190">
+            <!-- 这张卡内容本身很短，单独把行间距从其他卡通用的 10 再
+                 收到 6——只针对这张卡，其他卡内容更丰富，10 还是需要的，
+                 不跟着一起改。 -->
+            <StackPanel Spacing="6">
+              <!-- "显示字幕"开关挪到标题行——跟麦克风输入2卡是同一个
+                   模式（标题+开关同一行），本来就该保持一致，之前是
+                   单独占一行，现在省下来了。 -->
+              <Grid ColumnDefinitions="*,Auto">
+                <StackPanel Grid.Column="0" Spacing="2">
+                  <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                    <Ellipse Classes="StatusDot" Classes.Active="{Binding IsSessionRunning}" />
+                    <TextBlock Classes="SectionTitle" Text="字幕窗口" />
+                  </StackPanel>
+                </StackPanel>
+                <ToggleSwitch Grid.Column="1" IsChecked="{Binding SubtitleEnabled}"
+                              OnContent="{x:Null}" OffContent="{x:Null}"
+                              VerticalAlignment="Bottom" />
+              </Grid>
+
+              <!-- 原来是个"解锁字幕（Ctrl+Shift+L 同样有效）"按钮——
+                   换成设计图里的开关，真正双向绑定 IsSubtitleWindowLocked
+                   （开=锁定，关=解锁），底层调用见 HomeViewModel 里
+                   OnIsSubtitleWindowLockedChanged 和 SubtitleWindowService
+                   的 Lock()/Unlock() 注释。Ctrl+Shift+L 快捷键还是照常
+                   生效（走的是窗口自己的键盘事件），跟这个开关是同一份
+                   状态，互相同步。 -->
+              <Grid Classes="FieldRow" ColumnDefinitions="*,Auto">
+                <TextBlock Grid.Column="0" Classes="FieldLabel" Text="锁定窗口" VerticalAlignment="Center" />
+                <ToggleSwitch Grid.Column="1" IsChecked="{Binding IsSubtitleWindowLocked}"
+                              OnContent="{x:Null}" OffContent="{x:Null}" />
+              </Grid>
+
+              <!-- 只有开了输入二才有意义——单路输入场景下悬浮窗口只会
+                   有一路内容，这个筛选控件是多余的界面噪音。 -->
+              <Grid Classes="FieldRow" ColumnDefinitions="*,Auto" IsVisible="{Binding EnableSecondInputSource}">
+                <TextBlock Grid.Column="0" Classes="FieldLabel" Text="显示来源" VerticalAlignment="Center" />
+                <!-- 这张卡本身列宽窄（0.8fr），ComboBox 默认吃全局样式里
+                     写死的 Width="180"，在这么窄的卡片里几乎占满整行，
+                     挤得左边"显示来源"这四个字都快显示不下。上一版把
+                     Width 收到 80，但实际渲染还是超出了卡片边界——
+                     排查下来是 Avalonia Fluent 主题给 ComboBox 有一个
+                     比 80 更大的默认 MinWidth（主题资源
+                     ComboBoxThemeMinWidth），MinWidth 的优先级比本地
+                     Width 高，所以即使写了 Width="80"，实际渲染宽度
+                     还是被那个更大的主题 MinWidth 顶开，这才是真正溢出
+                     卡片右边界的原因，不是 80 这个数字本身不够窄。这次
+                     补上 MinWidth="80"，把主题默认值压下去，Width 才能
+                     真正生效。 -->
+                <ComboBox Grid.Column="1" Width="80" MinWidth="80"
+                          ItemsSource="{Binding SubtitleWindowFilterOptions}"
+                          SelectedValue="{Binding SelectedSubtitleWindowFilter}"
+                          SelectedValueBinding="{Binding Code}">
+                  <ComboBox.ItemTemplate>
+                    <DataTemplate x:DataType="vm:LanguageOption">
+                      <TextBlock Text="{Binding DisplayName}" />
+                    </DataTemplate>
+                  </ComboBox.ItemTemplate>
+                </ComboBox>
+              </Grid>
+            </StackPanel>
+          </Border>
+
+        </Grid>
+
+        <!-- 上一版为了让翻译卡宽度对上"麦克风输入"卡，把 ColumnSpacing
+             从 16 改成了 32 去补偿"row1 两条间距、row2 只有一条间距"
+             这个差异——数学上是对的（两行分给 * 列间距的总宽度相等，
+             列宽确实能精确对齐），但副作用是翻译卡和语音合成卡之间的
+             视觉间距变成了 32px，比 row1 卡片之间 16px 的间距明显更宽，
+             两行看着不协调（就是你截图里那道更宽的缝）。
+             换一种更干净的做法：row2 直接复用跟 row1 完全相同的
+             ColumnDefinitions="1.3*,1.3*,0.8*" 和 ColumnSpacing="16"，
+             翻译卡占第 0 列（宽度公式跟"麦克风输入"卡一模一样，左右
+             边界精确对齐），语音合成卡用 Grid.ColumnSpan="2" 横跨第 1、
+             2 两列（左边界精确对齐"麦克风输入2"卡，把第 1/2 列中间那
+             条内部间隙也吃进自己的宽度里）。这样两张卡之间可见的间距
+             就是标准的 16px，跟 row1 完全一致，不需要再用"故意调大间距
+             去凑对齐"这种取巧的补偿写法。 -->
+        <Grid Grid.Row="1" ColumnDefinitions="1.3*,1.3*,0.8*" ColumnSpacing="16">
+
+          <!-- ===== 翻译 =====
+               这次两张卡不再强制同一个 TabBody 高度——语音合成卡因为
+               Azure 模式字段比较多，TabBody 单独放大到 340，翻译卡的
+               内容量没有变，TabBody 保持 240 就够。两张卡的整体高度
+               因此不再相等，加上下面这个 VerticalAlignment="Top"：
+               不加的话，Grid 所在行会按"两张卡里最高的那张"分配行高，
+               矮的这张卡会被拉伸去填满那份多出来的高度，拉伸出来的
+               部分只是一块空的卡片背景，看着像是"卡片本身变高了"；
+               加了 Top 之后，这张卡就按自己实际内容的高度显示，不够的
+               部分是页面背景的空白，不是卡片自己的边框在拉长。 -->
+          <Border Grid.Column="0" Classes="SettingsCard" VerticalAlignment="Top">
+            <StackPanel Spacing="8">
+              <!-- Height="32" 是这次要解决"黑色区域顶部对不齐"的关键——
+                   翻译卡标题这一行原来是纯文字，自然高度只有文字行高；
+                   语音合成卡标题那一行因为多了个 ToggleSwitch（开关的
+                   最小高度比一行文字更高），两边标题行的实际高度不一样，
+                   下面所有内容跟着错位，最后连黑色区域的起始位置都对
+                   不上。给两边标题行都固定同一个高度，不管里面有没有
+                   开关，占的空间都一样，后面的内容才能严格对齐。 -->
+              <StackPanel Spacing="2" Height="32">
                 <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                   <Ellipse Classes="StatusDot" Classes.Active="{Binding IsSessionRunning}" />
-                  <TextBlock Classes="SectionTitle" Text="语音合成" />
+                  <TextBlock Classes="SectionTitle" Text="翻译" />
                 </StackPanel>
               </StackPanel>
 
+              <!-- 同样的道理，这一行也固定 Height="34"——翻译卡这里放的
+                   是 ToggleSwitch，语音合成卡对应位置放的是 ComboBox，
+                   两种控件本身的默认高度不完全一样，固定高度之后才能
+                   保证不管放哪种控件，这一行占的空间都相同。 -->
+              <Grid Classes="FieldRow" ColumnDefinitions="*,Auto" Height="34">
+                <TextBlock Grid.Column="0" Classes="FieldLabel" Text="启用术语表" VerticalAlignment="Center" />
+                <ToggleSwitch Grid.Column="1" IsChecked="{Binding GlossaryEnabled}"
+                              OnContent="{x:Null}" OffContent="{x:Null}" />
+              </Grid>
+
+              <!-- ===== 翻译提供方：浏览器式标签页 =====
+                   Margin 顶部给了 -8——卡片整体行距是 Spacing="8"，这里
+                   跟上面"启用术语表"那一行之间原来看着空得比较明显
+                   （见截图里标出来的那道缝），单独把这一处的间距往回收
+                   一点，不动其他行的间距。上一版用 -4 效果不明显，这次
+                   加大到 -8，相当于这一处的实际间距只剩 0。 -->
+              <StackPanel Orientation="Horizontal" Spacing="4" Margin="0,-8,0,0">
+                <RadioButton Classes="BrowserTab" GroupName="TranslationProvider"
+                             Content="本地" IsChecked="{Binding IsTranslationLocalSelected}" />
+                <RadioButton Classes="BrowserTab" GroupName="TranslationProvider"
+                             Content="API" IsChecked="{Binding IsTranslationApiSelected}" />
+              </StackPanel>
+              <!-- TabBody 固定 Height="240"——这张卡内容量没有变化
+                   （本地标签是空的，API 标签就服务商/区域/Key 几项），
+                   240 一直够用。之前为了让这张卡跟"语音合成"卡等高，
+                   跟着改成过 340，现在改回两张卡各自按自己内容量定
+                   高度（见下面"语音合成"卡 VerticalAlignment="Top" 那条
+                   注释），这张卡就没有必要再跟着放大了。 -->
+              <Border Classes="TabBody" Height="260">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                <Panel>
+                  <!-- 本地标签内容：目标语言已经挪到上面语音识别/麦克风
+                       输入2 两张卡片里（跟识别语言放一起，一行一个方向
+                       箭头），本地 OPUS-MT 翻译本身没有别的可配置项，
+                       这里就是空的——用户确认过空着没关系，不用硬塞一句
+                       提示文字进来。 -->
+                  <StackPanel Spacing="6" IsVisible="{Binding IsTranslationLocalSelected}">
+                  </StackPanel>
+
+                  <!-- API 标签内容：翻译服务商 + (Azure专属)区域 + API Key。
+                       目标语言不再放在这里——见上面本地标签那条注释，
+                       两个 Provider 现在共用同一处"目标语言"输入，不用
+                       各自维护一份。 -->
+                  <StackPanel Spacing="6" IsVisible="{Binding IsTranslationApiSelected}">
+                    <StackPanel>
+                      <TextBlock Classes="FieldLabel" Text="翻译服务商" />
+                      <ComboBox Width="NaN" HorizontalAlignment="Stretch"
+                                ItemsSource="{Binding TranslationModelOptions}"
+                                SelectedItem="{Binding SelectedTranslationModel}">
+                        <ComboBox.ItemTemplate>
+                          <DataTemplate x:DataType="vm:TranslationModelOption">
+                            <TextBlock Text="{Binding DisplayName}" />
+                          </DataTemplate>
+                        </ComboBox.ItemTemplate>
+                      </ComboBox>
+                    </StackPanel>
+
+                    <!-- 区域：只有选中 Azure 翻译时才显示，DeepSeek/豆包
+                         没有这个概念。IsEditable="True" 让这个下拉框既能
+                         从预置的常见区域里选，也能直接手打——Azure 的
+                         区域列表会变，预置几个常见的做快捷方式就够了，
+                         不在列表里的区域用户自己输入。 -->
+                    <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding IsAzureTranslationSelected}">
+                      <TextBlock Grid.Column="0" Classes="FieldLabel" Text="区域（选填）" VerticalAlignment="Center" />
+                      <ComboBox Grid.Column="1" Width="220"
+                                IsEditable="True"
+                                ItemsSource="{Binding AzureRegionOptions}"
+                                Text="{Binding TranslationApiRegion}"
+                                PlaceholderText="例如 westus2" />
+                    </Grid>
+
+                    <StackPanel>
+                      <TextBlock Classes="FieldLabel" Text="API Key" />
+                      <Grid ColumnDefinitions="*,Auto">
+                        <TextBox Grid.Column="0" Text="{Binding TranslationApiKey}"
+                                 PasswordChar="{Binding TranslationApiKeyPasswordChar}"
+                                 PlaceholderText="API Key" />
+                        <Button Grid.Column="1" Classes="ApiKeyToggle"
+                                Content="{Binding TranslationApiKeyToggleGlyph}"
+                                Command="{Binding ToggleTranslationApiKeyVisibilityCommand}" />
+                      </Grid>
+                    </StackPanel>
+                  </StackPanel>
+                </Panel>
+                </ScrollViewer>
+              </Border>
+            </StackPanel>
+          </Border>
+
+          <!-- ===== 语音合成 =====
+               Grid.ColumnSpan="2" 横跨第 1、2 两列——左边界正好对上
+               "麦克风输入2"卡（第 1 列的左边界），宽度上比单占一列多
+               吃进了第 1/2 列之间那条内部间隙，也就是本来单占一列该有
+               的宽度基础上再加 16px，比之前"2.1*"份数分到的宽度还要
+               再宽一点点，不算吃亏。VerticalAlignment="Top" 理由见
+               "翻译"卡那边的注释——这张卡现在是两张卡里更高的那张，
+               加不加 Top 其实不影响它自己的显示（它本来就是那个"最高"
+               的基准），但两边写法保持一致，以后如果两张卡的高低关系
+               反过来了，也不用再回头补这个属性。 -->
+          <Border Grid.Column="1" Grid.ColumnSpan="2" Classes="SettingsCard" VerticalAlignment="Top">
+            <StackPanel Spacing="8">
+              <!-- "语音播报"开关挪到标题行——跟麦克风输入2、字幕窗口
+                   两张卡是同一个模式（标题+开关同一行），保持一致。
+                   Height="32" 理由见"翻译"卡那边的注释——两张卡标题行
+                   固定同一个高度，黑色区域的起始位置才能严格对齐。 -->
+              <Grid ColumnDefinitions="*,Auto" Height="32">
+                <StackPanel Grid.Column="0" Spacing="2">
+                  <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                    <Ellipse Classes="StatusDot" Classes.Active="{Binding IsSessionRunning}" />
+                    <TextBlock Classes="SectionTitle" Text="语音合成" />
+                  </StackPanel>
+                </StackPanel>
+                <ToggleSwitch Grid.Column="1" IsChecked="{Binding EnableTtsPlayback}"
+                              OnContent="{x:Null}" OffContent="{x:Null}"
+                              VerticalAlignment="Bottom" />
+              </Grid>
+
+              <!-- "输出设备"从"标签在上、下拉框在下"改成同一行——这张卡
+                   现在独占标题行的开关已经不用再跟"输出设备"凑一行两列
+                   了，"输出设备"自己占一整行反而更宽松，用跟其他卡片
+                   一致的 FieldRow（标签左、控件右）样式。下拉框顺手也
+                   收窄到 220（原来是撑满整个 2/3 列宽），设备名称本身
+                   没那么长，不需要占那么宽。 -->
               <Grid Classes="FieldRow" ColumnDefinitions="*,Auto">
                 <TextBlock Grid.Column="0" Classes="FieldLabel" Text="输出设备" VerticalAlignment="Center" />
                 <ComboBox Grid.Column="1" Width="220"
@@ -365,29 +684,34 @@
                 </ComboBox>
               </Grid>
 
-              <Grid Classes="FieldRow" ColumnDefinitions="*,Auto">
-                <TextBlock Grid.Column="0" Classes="FieldLabel" Text="语音播报" VerticalAlignment="Center" />
-                <ToggleSwitch Grid.Column="1" IsChecked="{Binding EnableTtsPlayback}"
-                              OnContent="{x:Null}" OffContent="{x:Null}" />
-              </Grid>
-
               <!-- ===== 合成提供方：浏览器式标签页 =====
                    标签头本身就是 Provider 选择，不再需要单独一行"合成
-                   提供方"标签+分段按钮。 -->
-              <StackPanel Orientation="Horizontal" Spacing="4" Margin="0,0,0,0">
+                   提供方"标签+分段按钮。Margin 顶部收到 -8，理由跟
+                   "翻译"卡那处一样——上一版用 -4 视觉上几乎看不出变化，
+                   这次加大到 -8。 -->
+              <StackPanel Orientation="Horizontal" Spacing="4" Margin="0,-8,0,0">
                 <RadioButton Classes="BrowserTab" GroupName="TtsProvider"
                              Content="本地" IsChecked="{Binding IsTtsLocalSelected}" />
                 <RadioButton Classes="BrowserTab" GroupName="TtsProvider"
                              Content="API" IsChecked="{Binding IsTtsApiSelected}" />
               </StackPanel>
-              <Border Classes="TabBody">
+              <!-- TabBody 固定 Height="340"，不再跟"翻译"卡共用同一个
+                   高度——Azure 模式下这张卡的字段比阿里云场景还多
+                   （区域+英文音色+中文音色+情绪跟随+API Key 一共 4 行），
+                   240 装不下，会被内部 ScrollViewer 切掉一截（用户截图
+                   里能看到滚动条）。改成 340 单纯是按这张卡自己实际
+                   内容量定的，不再考虑要不要跟"翻译"卡等高——两张卡
+                   现在各自独立决定高度，见外层 Border 上
+                   VerticalAlignment="Top" 那条注释。 -->
+              <Border Classes="TabBody" Height="260">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
                 <Panel>
                   <!-- 本地标签内容：发声角色（音色克隆角色）从原来的共享区
                        挪过来——这个下拉框绑定的是本地 GPT-SoVITS 角色库
                        （Character 表），只对本地合成有意义，不是"不管选哪
                        个 Provider 都通用"的字段，放共享区是站不住的，
                        挪到本地标签下面才对。 -->
-                  <StackPanel Spacing="10" IsVisible="{Binding IsTtsLocalSelected}">
+                  <StackPanel Spacing="6" IsVisible="{Binding IsTtsLocalSelected}">
                     <Grid ColumnDefinitions="*,Auto">
                       <TextBlock Grid.Column="0" Classes="FieldLabel" Text="发声角色" VerticalAlignment="Center" />
                       <ComboBox Grid.Column="1" Width="220"
@@ -434,8 +758,16 @@
                   </StackPanel>
 
                   <!-- API 标签内容：合成模型 + (Azure专属)区域/音色/情绪跟随
-                       + API Key。 -->
-                  <StackPanel Spacing="10" IsVisible="{Binding IsTtsApiSelected}">
+                       + API Key + (阿里云专属)WebSocket地址/模型名/音色ID。
+                       "语音合成"卡拿到了更宽的列宽之后（见外层
+                       ColumnDefinitions 的注释），凡是两个字段本身不需要
+                       很宽的地方（下拉框、短文本框），都改成一行两列，
+                       不再各占一整行——阿里云那个场景字段最多，之前全部
+                       纵向堆叠需要的高度已经超过卡片本身固定的 320，
+                       导致必须在 TabBody 内部滚动才能看全，2 列布局能把
+                       实际需要的高度压回 320 以内，首页就能直接看到全部
+                       内容，不用再滚。 -->
+                  <StackPanel Spacing="6" IsVisible="{Binding IsTtsApiSelected}">
                     <Grid ColumnDefinitions="*,Auto">
                       <TextBlock Grid.Column="0" Classes="FieldLabel" Text="合成模型" VerticalAlignment="Center" />
                       <ComboBox Grid.Column="1" Width="220"
@@ -449,68 +781,70 @@
                       </ComboBox>
                     </Grid>
 
-                    <!-- 以下几项只在选中 Azure 语音合成时显示。
-                         区域是纯下拉（不可编辑）——这个字段是必填的，
-                         直接拼进请求地址，手滑输错会导致请求直接失败，
-                         所以不像翻译那边的区域字段允许手输，这里只能从
-                         预置列表选（跟翻译区域共用同一份 AzureRegionOptions
-                         集合）。 -->
-                    <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding IsAzureTtsSelected}">
-                      <TextBlock Grid.Column="0" Classes="FieldLabel" Text="区域" VerticalAlignment="Center" />
-                      <ComboBox Grid.Column="1" Width="220"
-                                ItemsSource="{Binding AzureRegionOptions}"
-                                SelectedItem="{Binding TtsApiRegion}"
-                                PlaceholderText="选择区域" />
-                    </Grid>
-
-                    <!-- 英文/中文音色分开两个下拉框——翻译方向决定了
-                         SynthesizeAsync 该用哪种语言朗读，各自配置好
-                         对应语言的音色，不用每次手动切换。现在各自只有
-                         一个选项，是刻意为以后加更多音色预留的列表结构
-                         （见 HomeViewModel 里 EnglishVoiceOptions/
-                         ChineseVoiceOptions 的注释），不是漏掉了别的选项。 -->
-                    <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding IsAzureTtsSelected}">
-                      <TextBlock Grid.Column="0" Classes="FieldLabel" Text="英文音色" VerticalAlignment="Center" />
-                      <ComboBox Grid.Column="1" Width="220"
-                                ItemsSource="{Binding EnglishVoiceOptions}"
-                                SelectedItem="{Binding SelectedEnglishVoice}">
-                        <ComboBox.ItemTemplate>
-                          <DataTemplate x:DataType="vm:TtsVoiceOption">
-                            <TextBlock Text="{Binding DisplayName}" />
-                          </DataTemplate>
-                        </ComboBox.ItemTemplate>
-                      </ComboBox>
-                    </Grid>
-
-                    <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding IsAzureTtsSelected}">
-                      <TextBlock Grid.Column="0" Classes="FieldLabel" Text="中文音色" VerticalAlignment="Center" />
-                      <ComboBox Grid.Column="1" Width="220"
-                                ItemsSource="{Binding ChineseVoiceOptions}"
-                                SelectedItem="{Binding SelectedChineseVoice}">
-                        <ComboBox.ItemTemplate>
-                          <DataTemplate x:DataType="vm:TtsVoiceOption">
-                            <TextBlock Text="{Binding DisplayName}" />
-                          </DataTemplate>
-                        </ComboBox.ItemTemplate>
-                      </ComboBox>
-                    </Grid>
-
-                    <!-- 情绪跟随：只有 Azure 这里需要这个开关——本地
+                    <!-- 以下几项只在选中 Azure 语音合成时显示，两两一行：
+                         区域+英文音色一行，中文音色+情绪跟随一行。区域是
+                         纯下拉（不可编辑）——这个字段是必填的，直接拼进
+                         请求地址，手滑输错会导致请求直接失败，所以不像
+                         翻译那边的区域字段允许手输，这里只能从预置列表选
+                         （跟翻译区域共用同一份 AzureRegionOptions 集合）。
+                         英文/中文音色分开两个下拉框——翻译方向决定了
+                         SynthesizeAsync 该用哪种语言朗读，各自配置好对应
+                         语言的音色，不用每次手动切换。现在各自只有一个
+                         选项，是刻意为以后加更多音色预留的列表结构（见
+                         HomeViewModel 里 EnglishVoiceOptions/
+                         ChineseVoiceOptions 的注释），不是漏掉了别的选项。
+                         情绪跟随：只有 Azure 这里需要这个开关——本地
                          GPT-SoVITS 本来就是按情绪自动选参考音频，没有
                          "跟不跟随"这个选项存在的意义。 -->
-                    <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding IsAzureTtsSelected}">
+                    <Grid ColumnDefinitions="*,*" ColumnSpacing="16" IsVisible="{Binding IsAzureTtsSelected}">
                       <StackPanel Grid.Column="0">
-                        <TextBlock Classes="FieldLabel" Text="情绪跟随" Margin="0" />
-                        <TextBlock Text="开启后按识别到的情绪调整语气，关闭则统一用默认语气朗读"
-                                   Foreground="{StaticResource TextSecondaryBrush}"
-                                   FontSize="11" TextWrapping="Wrap" MaxWidth="200" />
+                        <TextBlock Classes="FieldLabel" Text="区域" />
+                        <ComboBox Width="NaN" HorizontalAlignment="Stretch"
+                                  ItemsSource="{Binding AzureRegionOptions}"
+                                  SelectedItem="{Binding TtsApiRegion}"
+                                  PlaceholderText="选择区域" />
                       </StackPanel>
-                      <ToggleSwitch Grid.Column="1" IsChecked="{Binding TtsEmotionFollowEnabled}"
-                                    OnContent="{x:Null}" OffContent="{x:Null}"
-                                    VerticalAlignment="Top" />
+                      <StackPanel Grid.Column="1">
+                        <TextBlock Classes="FieldLabel" Text="英文音色" />
+                        <ComboBox Width="NaN" HorizontalAlignment="Stretch"
+                                  ItemsSource="{Binding EnglishVoiceOptions}"
+                                  SelectedItem="{Binding SelectedEnglishVoice}">
+                          <ComboBox.ItemTemplate>
+                            <DataTemplate x:DataType="vm:TtsVoiceOption">
+                              <TextBlock Text="{Binding DisplayName}" />
+                            </DataTemplate>
+                          </ComboBox.ItemTemplate>
+                        </ComboBox>
+                      </StackPanel>
                     </Grid>
 
-                    <StackPanel>
+                    <Grid ColumnDefinitions="*,*" ColumnSpacing="16" IsVisible="{Binding IsAzureTtsSelected}">
+                      <StackPanel Grid.Column="0">
+                        <TextBlock Classes="FieldLabel" Text="中文音色" />
+                        <ComboBox Width="NaN" HorizontalAlignment="Stretch"
+                                  ItemsSource="{Binding ChineseVoiceOptions}"
+                                  SelectedItem="{Binding SelectedChineseVoice}">
+                          <ComboBox.ItemTemplate>
+                            <DataTemplate x:DataType="vm:TtsVoiceOption">
+                              <TextBlock Text="{Binding DisplayName}" />
+                            </DataTemplate>
+                          </ComboBox.ItemTemplate>
+                        </ComboBox>
+                      </StackPanel>
+                      <StackPanel Grid.Column="1">
+                        <TextBlock Classes="FieldLabel" Text="情绪跟随" Margin="0" />
+                        <ToggleSwitch IsChecked="{Binding TtsEmotionFollowEnabled}"
+                                      OnContent="{x:Null}" OffContent="{x:Null}"
+                                      HorizontalAlignment="Left" Margin="0,4,0,0" />
+                      </StackPanel>
+                    </Grid>
+
+                    <!-- API Key：Azure 模式下单独占一行（没有 WebSocket 地址
+                         可以并排）；阿里云模式下跟 WebSocket 地址合并成
+                         一行两列——这两个字段单独占一行的时候太浪费高度，
+                         合并之后能省下一整行。两处都是同一个 TtsApiKey，
+                         互斥显示，不会有两份输入互相打架。 -->
+                    <StackPanel IsVisible="{Binding IsAzureTtsSelected}">
                       <TextBlock Classes="FieldLabel" Text="API Key" />
                       <Grid ColumnDefinitions="*,Auto">
                         <TextBox Grid.Column="0" Text="{Binding TtsApiKey}"
@@ -522,216 +856,95 @@
                       </Grid>
                     </StackPanel>
 
-                    <!-- 阿里云百炼专属：WebSocket 地址（每个工作空间不一样，
-                         没法内置预设值）和模型名（声音复刻注册时用的
-                         target_model 必须跟这里一致）。 -->
-                    <StackPanel IsVisible="{Binding IsAliyunTtsSelected}" Spacing="10">
-                      <StackPanel>
-                        <TextBlock Classes="FieldLabel" Text="WebSocket 地址" />
-                        <TextBox Text="{Binding TtsAliyunWebSocketUrl}"
-                                 PlaceholderText="wss://ws-xxxxxxxx.cn-beijing.maas.aliyuncs.com/api-ws/v1/inference" />
-                        <TextBlock Text="每个百炼工作空间的地址不一样，去百炼控制台确认"
-                                   Foreground="{StaticResource TextSecondaryBrush}"
-                                   FontSize="11" TextWrapping="Wrap" />
-                      </StackPanel>
-                      <StackPanel>
-                        <TextBlock Classes="FieldLabel" Text="模型名" />
-                        <TextBox Text="{Binding TtsAliyunModel}"
-                                 PlaceholderText="qwen-audio-3.0-tts-flash" />
-                      </StackPanel>
-                      <StackPanel>
-                        <TextBlock Classes="FieldLabel" Text="音色 ID（测试用，手动填）" />
-                        <TextBox Text="{Binding TtsAliyunManualVoiceId}"
-                                 PlaceholderText="声音复刻注册后拿到的 voice_id" />
-                        <TextBlock Text="完整的注册流程还没做进应用里，先手动粘贴一个已经注册好的 voice_id"
-                                   Foreground="{StaticResource TextSecondaryBrush}"
-                                   FontSize="11" TextWrapping="Wrap" />
-                      </StackPanel>
-                    </StackPanel>
-                  </StackPanel>
-                </Panel>
-              </Border>
-            </StackPanel>
-          </Border>
-        </StackPanel>
-
-
-
-        <!-- ===== 右列：文本链路 ===== -->
-        <StackPanel Grid.Column="1" Spacing="16">
-
-          <!-- ===== 翻译 ===== -->
-          <Border Classes="SettingsCard">
-            <StackPanel Spacing="14">
-              <StackPanel Spacing="2">
-                <TextBlock Classes="ChannelEyebrow" Text="TRANSLATE" />
-                <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                  <Ellipse Classes="StatusDot" Classes.Active="{Binding IsSessionRunning}" />
-                  <TextBlock Classes="SectionTitle" Text="翻译" />
-                </StackPanel>
-              </StackPanel>
-
-              <Grid Classes="FieldRow" ColumnDefinitions="*,Auto">
-                <TextBlock Grid.Column="0" Classes="FieldLabel" Text="启用术语表" VerticalAlignment="Center" />
-                <ToggleSwitch Grid.Column="1" IsChecked="{Binding GlossaryEnabled}"
-                              OnContent="{x:Null}" OffContent="{x:Null}" />
-              </Grid>
-
-              <!-- ===== 翻译提供方：浏览器式标签页 ===== -->
-              <StackPanel Orientation="Horizontal" Spacing="4">
-                <RadioButton Classes="BrowserTab" GroupName="TranslationProvider"
-                             Content="本地" IsChecked="{Binding IsTranslationLocalSelected}" />
-                <RadioButton Classes="BrowserTab" GroupName="TranslationProvider"
-                             Content="API" IsChecked="{Binding IsTranslationApiSelected}" />
-              </StackPanel>
-              <Border Classes="TabBody">
-                <Panel>
-                  <!-- 本地标签内容：目标语言从原来的共享区挪过来——本地
-                       OPUS-MT 部署的是 zh<->en 两个方向专用模型，可选范围
-                       是固定死的，跟 API 标签那边"以后能加更多语言"的
-                       TargetLanguage 不是同一个选项列表（虽然绑定的是
-                       同一个 TargetLanguage 设置值，见 HomeViewModel 里
-                       TargetLanguageOptions/ApiTargetLanguageOptions
-                       的注释）。 -->
-                  <StackPanel Spacing="10" IsVisible="{Binding IsTranslationLocalSelected}">
-                    <Grid ColumnDefinitions="*,Auto">
-                      <TextBlock Grid.Column="0" Classes="FieldLabel" Text="目标语言" VerticalAlignment="Center" />
-                      <ComboBox Grid.Column="1"
-                                ItemsSource="{Binding TargetLanguageOptions}"
-                                SelectedValue="{Binding TargetLanguage}"
-                                SelectedValueBinding="{Binding Code}">
-                        <ComboBox.ItemTemplate>
-                          <DataTemplate x:DataType="vm:LanguageOption">
-                            <TextBlock Text="{Binding DisplayName}" />
-                          </DataTemplate>
-                        </ComboBox.ItemTemplate>
-                      </ComboBox>
-                    </Grid>
-                  </StackPanel>
-
-                  <!-- API 标签内容：目标语言 + 翻译服务商 + (Azure专属)区域
-                       + API Key。目标语言放在最上面，是因为它是"要做
-                       什么"这一层的参数，服务商/区域/Key 是"怎么做"这
-                       一层，顺序上更自然。 -->
-                  <StackPanel Spacing="10" IsVisible="{Binding IsTranslationApiSelected}">
-                    <Grid ColumnDefinitions="*,Auto">
-                      <TextBlock Grid.Column="0" Classes="FieldLabel" Text="目标语言" VerticalAlignment="Center" />
-                      <ComboBox Grid.Column="1"
-                                ItemsSource="{Binding ApiTargetLanguageOptions}"
-                                SelectedValue="{Binding TargetLanguage}"
-                                SelectedValueBinding="{Binding Code}">
-                        <ComboBox.ItemTemplate>
-                          <DataTemplate x:DataType="vm:LanguageOption">
-                            <TextBlock Text="{Binding DisplayName}" />
-                          </DataTemplate>
-                        </ComboBox.ItemTemplate>
-                      </ComboBox>
-                    </Grid>
-
-                    <!-- 标签从"翻译模型"改成"翻译服务商"——这个下拉框
-                         选的其实是服务商（DeepSeek/豆包这类大模型 vs
-                         Azure 这类专用翻译引擎），Azure 根本没有"模型"
-                         这个概念，继续叫"翻译模型"不准确。 -->
-                    <Grid ColumnDefinitions="*,Auto">
-                      <TextBlock Grid.Column="0" Classes="FieldLabel" Text="翻译服务商" VerticalAlignment="Center" />
-                      <ComboBox Grid.Column="1" Width="220"
-                                ItemsSource="{Binding TranslationModelOptions}"
-                                SelectedItem="{Binding SelectedTranslationModel}">
-                        <ComboBox.ItemTemplate>
-                          <DataTemplate x:DataType="vm:TranslationModelOption">
-                            <TextBlock Text="{Binding DisplayName}" />
-                          </DataTemplate>
-                        </ComboBox.ItemTemplate>
-                      </ComboBox>
-                    </Grid>
-
-                    <!-- 区域：只有选中 Azure 翻译时才显示，DeepSeek/豆包
-                         没有这个概念。IsEditable="True" 让这个下拉框既能
-                         从预置的常见区域里选，也能直接手打——Azure 的
-                         区域列表会变，预置几个常见的做快捷方式就够了，
-                         不在列表里的区域用户自己输入。 -->
-                    <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding IsAzureTranslationSelected}">
-                      <TextBlock Grid.Column="0" Classes="FieldLabel" Text="区域（选填）" VerticalAlignment="Center" />
-                      <ComboBox Grid.Column="1" Width="220"
-                                IsEditable="True"
-                                ItemsSource="{Binding AzureRegionOptions}"
-                                Text="{Binding TranslationApiRegion}"
-                                PlaceholderText="例如 westus2" />
-                    </Grid>
-
-                    <StackPanel>
-                      <TextBlock Classes="FieldLabel" Text="API Key" />
-                      <Grid ColumnDefinitions="*,Auto">
-                        <TextBox Grid.Column="0" Text="{Binding TranslationApiKey}"
-                                 PasswordChar="{Binding TranslationApiKeyPasswordChar}"
-                                 PlaceholderText="API Key" />
-                        <Button Grid.Column="1" Classes="ApiKeyToggle"
-                                Content="{Binding TranslationApiKeyToggleGlyph}"
-                                Command="{Binding ToggleTranslationApiKeyVisibilityCommand}" />
+                    <!-- 阿里云百炼专属：API Key + WebSocket 地址合并一行两列
+                         （上面注释已经说明原因）；模型名（声音复刻注册时用的
+                         target_model 必须跟这里一致）和音色 ID 也合并成一行
+                         两列。 -->
+                    <StackPanel IsVisible="{Binding IsAliyunTtsSelected}" Spacing="6">
+                      <Grid ColumnDefinitions="*,*" ColumnSpacing="16">
+                        <StackPanel Grid.Column="0">
+                          <TextBlock Classes="FieldLabel" Text="API Key" />
+                          <Grid ColumnDefinitions="*,Auto">
+                            <TextBox Grid.Column="0" Text="{Binding TtsApiKey}"
+                                     PasswordChar="{Binding TtsApiKeyPasswordChar}"
+                                     PlaceholderText="API Key" />
+                            <Button Grid.Column="1" Classes="ApiKeyToggle"
+                                    Content="{Binding TtsApiKeyToggleGlyph}"
+                                    Command="{Binding ToggleTtsApiKeyVisibilityCommand}" />
+                          </Grid>
+                        </StackPanel>
+                        <StackPanel Grid.Column="1">
+                          <TextBlock Classes="FieldLabel" Text="WebSocket 地址" />
+                          <TextBox Text="{Binding TtsAliyunWebSocketUrl}"
+                                   PlaceholderText="wss://ws-xxx.../inference" />
+                        </StackPanel>
                       </Grid>
+                      <TextBlock Text="每个百炼工作空间的地址不一样，去百炼控制台确认"
+                                 Foreground="{StaticResource TextSecondaryBrush}"
+                                 FontSize="11" TextWrapping="Wrap" />
+                      <Grid ColumnDefinitions="*,*" ColumnSpacing="16">
+                        <StackPanel Grid.Column="0">
+                          <TextBlock Classes="FieldLabel" Text="模型名" />
+                          <TextBox Text="{Binding TtsAliyunModel}"
+                                   PlaceholderText="qwen-audio-3.0-tts-flash" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="1">
+                          <TextBlock Classes="FieldLabel" Text="音色 ID（测试用）" />
+                          <TextBox Text="{Binding TtsAliyunManualVoiceId}"
+                                   PlaceholderText="已注册的 voice_id" />
+                        </StackPanel>
+                      </Grid>
+                      <TextBlock Text="完整的注册流程还没做进应用里，先手动粘贴一个已经注册好的 voice_id"
+                                 Foreground="{StaticResource TextSecondaryBrush}"
+                                 FontSize="11" TextWrapping="Wrap" />
                     </StackPanel>
                   </StackPanel>
                 </Panel>
+                </ScrollViewer>
               </Border>
             </StackPanel>
           </Border>
 
-          <!-- ===== 悬浮字幕 ===== -->
-          <Border Classes="SettingsCard">
-            <StackPanel Spacing="14">
-              <StackPanel Spacing="2">
-                <TextBlock Classes="ChannelEyebrow" Text="DISPLAY" />
-                <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                  <Ellipse Classes="StatusDot" Classes.Active="{Binding IsSessionRunning}" />
-                  <TextBlock Classes="SectionTitle" Text="悬浮字幕" />
-                </StackPanel>
-              </StackPanel>
+        </Grid>
 
-              <Grid Classes="FieldRow" ColumnDefinitions="*,Auto">
-                <TextBlock Grid.Column="0" Classes="FieldLabel" Text="显示字幕" VerticalAlignment="Center" />
-                <ToggleSwitch Grid.Column="1" IsChecked="{Binding SubtitleEnabled}"
-                              OnContent="{x:Null}" OffContent="{x:Null}" />
-              </Grid>
-
-              <!-- 只有开了输入二才有意义——单路输入场景下悬浮窗口只会
-                   有一路内容，这个筛选控件是多余的界面噪音。必须在开始
-                   翻译前配置好，运行中悬浮窗口本身没有筛选按钮，保持
-                   界面干净（跟"实时翻译"主界面里那个随时可切的筛选是
-                   两回事）。 -->
-              <StackPanel IsVisible="{Binding EnableSecondInputSource}" Spacing="4">
-                <TextBlock Classes="FieldLabel" Text="悬浮字幕显示内容" />
-                <StackPanel Orientation="Horizontal" Spacing="4">
-                  <RadioButton Classes="BrowserTab" GroupName="SubtitleWindowFilter"
-                               Content="全部" IsChecked="{Binding IsSubtitleWindowFilterAll}" />
-                  <RadioButton Classes="BrowserTab" GroupName="SubtitleWindowFilter"
-                               Content="仅输入一" IsChecked="{Binding IsSubtitleWindowFilterSource1}" />
-                  <RadioButton Classes="BrowserTab" GroupName="SubtitleWindowFilter"
-                               Content="仅输入二" IsChecked="{Binding IsSubtitleWindowFilterSource2}" />
-                </StackPanel>
-              </StackPanel>
-
-              <Button Content="解锁字幕（Ctrl+Shift+L 同样有效）"
-                      Command="{Binding UnlockSubtitleCommand}"
-                      Background="{StaticResource NavItemHoverBrush}"
-                      Foreground="{StaticResource TextPrimaryBrush}"
-                      Padding="14,8" CornerRadius="6"
-                      HorizontalAlignment="Left" />
-            </StackPanel>
-          </Border>
-        </StackPanel>
       </Grid>
 
-      <!-- 启动/停止按钮：运行中和未运行是两个视觉上完全不同的按钮
-           （颜色、文字都不一样），用 Panel 叠放 + IsVisible 互斥来做，
-           而不是同一个按钮动态换文字/换色——这样两种状态的样式可以
-           完全独立地调，不用互相牵扯着改同一份 Setter。
-           这两颗按钮本身不受 CanEditSettings 影响，一直可点——运行中
-           需要能点停止，不运行需要能点开始，这是唯一两个"任何时候都不
-           该被锁住"的交互元素。 -->
-      <Panel Margin="0,20,0,32">
+      <!-- 启动/停止按钮放回跟卡片同一个可滚动 StackPanel 里，不再单独
+           拆成 Grid 的第二行——之前拆开是为了解决"设置区域内容太高时
+           按钮被顶到屏幕外看不见"的问题，但现在这几张卡片高度都已经
+           收得比较紧凑，正常窗口尺寸下本来就不需要滚动；拆成两个 Grid
+           行之后，ScrollViewer 和下面固定的按钮行在测量高度时有一点
+           点对不上（大概是 Grid 的 "*" 行加上 Auto 行的高度分配跟
+           ScrollViewer 自身的滚动条判定之间的取整误差），导致哪怕上面
+           内容已经完整显示了，ScrollViewer 还是会判定"高了一点点"而
+           显示出一条滚动条——这条滚动条本身没有实际内容可滚，纯粹是
+           视觉噪音。放回同一个滚动容器里，就不存在两个独立布局单元
+           互相对不齐的问题了。
+           运行中和未运行是两个视觉上完全不同的按钮（颜色、文字都不
+           一样），用 Panel 叠放 + IsVisible 互斥来做，而不是同一个按钮
+           动态换文字/换色——这样两种状态的样式可以完全独立地调，不用
+           互相牵扯着改同一份 Setter。这两颗按钮本身不受 CanEditSettings
+           影响，一直可点——运行中需要能点停止，不运行需要能点开始，这是
+           唯一两个"任何时候都不该被锁住"的交互元素。 -->
+      <!-- 上边距从 20 收到 12，下边距从 32 收到 16——这两个数字本身
+           就是"卡片区域和按钮之间留多少空气"，跟内容有没有必要没关系，
+           收紧一些既让页面观感更紧凑，也直接减少了一截总高度，对付
+           "内容明明够了却还要滚动"这个问题是有实际帮助的（哪怕主要
+           原因已经是别的地方，能省的高度还是要省）。 -->
+      <Panel Margin="0,12,0,16">
         <!-- 未运行：强调色"开始翻译"，整个视觉改版里唯一允许"张扬"的
-             地方。比普通按钮更高（18 上下内边距），阴影更明显，模拟
-             物理面板上大号启动按键的质感。 -->
+             地方。比普通按钮更高（18 上下内边距）。原来这里还挂了一个
+             DropShadowEffect 做投影，看着更有质感，但 Avalonia 的
+             Effect 在某些情况下会让元素报告出的渲染/测量边界比它实际
+             布局占用的尺寸更大（这里 BlurRadius="24" 意味着阴影会往
+             外扩散出去一截）——ScrollViewer 计算可滚动范围时是按这个
+             偏大的边界算的，于是哪怕视觉上内容已经完整显示了，
+             ScrollViewer 还是认为"下面还有一点点没显示完"，画出一条
+             滚动条，滚下去自然就是空的（因为那截额外空间本来就只是
+             阴影的虚化范围，不是真实内容）。这正是上一版滚动条问题的
+             真正原因——不是 Grid 拆分行的取整误差，是这个阴影效果。
+             去掉之后没有阴影了，按钮观感朴素一点，但换来的是滚动行为
+             彻底正确。 -->
         <Button Content="开 始 翻 译"
                 Command="{Binding StartTranslationCommand}"
                 IsVisible="{Binding !IsSessionRunning}"
@@ -740,13 +953,7 @@
                 FontWeight="SemiBold" FontSize="16"
                 Padding="0,18" HorizontalContentAlignment="Center"
                 HorizontalAlignment="Stretch"
-                CornerRadius="8">
-          <Button.Effect>
-            <DropShadowEffect Color="{StaticResource AccentColor}"
-                               BlurRadius="24" OffsetX="0" OffsetY="4"
-                               Opacity="0.35" />
-          </Button.Effect>
-        </Button>
+                CornerRadius="8" />
 
         <!-- 运行中：红色"停止翻译"，点了直接停止（不跳转页面）。
              之前点了开始之后主页按钮没反应，就是因为点击会立刻跳转到

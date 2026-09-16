@@ -100,6 +100,16 @@ public class AppSettings
     /// 里两路方向是相反的（输入一 中->英，输入二 英->中）。</summary>
     public string TargetLanguage2 { get; set; } = "zh";
 
+    /// <summary>输入二的识别语言，独立于 RecognitionLanguage——这是修复
+    /// "接入第二路输入后英文被误识别成中文"这个问题的关键字段。SenseVoice
+    /// 的 /recognize 接口本来就是每次请求带 language 参数（见
+    /// SenseVoiceService.py 注释），不是加载模型时固定死的，之前的 bug
+    /// 只是 C# 侧两路会话都读了同一个 RecognitionLanguage，没有独立开出
+    /// 第二个字段。默认给 "en"——对应 TargetLanguage2 默认 "zh" 隐含的
+    /// 典型场景（输入二是队友说英文，翻成中文字幕），跟 RecognitionLanguage
+    /// 默认 "auto" 不一样，是因为两路场景不对称，没有一个通用的默认值。</summary>
+    public string RecognitionLanguage2 { get; set; } = "en";
+
     /// <summary>字幕面板显示哪一路的结果——"All"/"Source1"/"Source2"。
     /// 只在 EnableSecondInputSource 为 true 时才有意义，两路都开着的
     /// 时候，字幕混在一起容易看花，给个筛选。</summary>

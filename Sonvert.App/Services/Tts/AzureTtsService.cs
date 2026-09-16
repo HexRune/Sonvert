@@ -1,6 +1,8 @@
 using Sonvert.App.Settings;
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Threading.Tasks;
@@ -28,6 +30,8 @@ namespace Sonvert.App.Services.Tts;
 /// 压缩格式——项目现有的 NAudioPlaybackService 播放逻辑是写死用
 /// NAudio.Wave.WaveFileReader 解码的，只认 RIFF/WAV，给它 MP3 会直接
 /// 播放失败。这是看现有播放代码发现的硬约束，不是随便选的格式。
+/// 这个约束只针对 SynthesizeAsync 这条非流式路径——SynthesizeStreamingAsync
+/// 见下面的注释，走的是另一个专门为流式设计的输出格式，两条路径互不影响。
 /// </summary>
 public class AzureTtsService : ITtsService
 {
@@ -99,7 +103,14 @@ public class AzureTtsService : ITtsService
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
         {
-            throw new InvalidOperationException($"调用 Azure 语音合成失败（网络层）: {ex.Message}", ex);
+            // ex.Message 对 SSL 握手失败这类问题几乎不给任何有用信息
+            // （.NET 自己都说"see inner exception"了），真正的原因在
+            // ex.InnerException 里（比如具体是证书链验证失败、还是
+            // TLS 版本协商不上、还是连接直接被重置）。之前这里只拼了
+            // ex.Message，把这部分信息丢了，排查网络问题时日志基本
+            // 没用——这次把 InnerException 的信息也带上。
+            var detail = ex.InnerException?.Message ?? ex.Message;
+            throw new InvalidOperationException($"调用 Azure 语音合成失败（网络层）: {ex.Message} | {detail}", ex);
         }
 
         if (!response.IsSuccessStatusCode)
@@ -122,6 +133,130 @@ public class AzureTtsService : ITtsService
             AudioData = audioData,
             MediaType = "wav",
         };
+    }
+
+    /// <summary>Azure 是第二个支持流式合成的引擎（第一个是阿里云）。
+    /// 跟阿里云不一样的地方：阿里云走的是它自己的 WebSocket 协议，
+    /// 是完全不同的一套连接/帧解析逻辑；Azure 这边用的还是
+    /// SynthesizeAsync 那个同一个 REST 端点，唯一的区别是：
+    /// 1) X-Microsoft-OutputFormat 换成 raw-24khz-16bit-mono-pcm
+    ///    （裸 PCM，没有 WAV 容器头）而不是 riff-24khz-16bit-mono-pcm。
+    ///    这不是随便换的——Azure 官方文档明确把输出格式分成 Streaming/
+    ///    NonStreaming 两类，riff-* 因为文件头里要写死数据总长度，
+    ///    必须等全部合成完才能确定，天然进不了 Streaming 那一类；
+    ///    raw-* 没有这个问题，是文档里明确列在 Streaming 里的格式。
+    ///    riff-* 那条路径（SynthesizeAsync）完全不受影响，两条路径
+    ///    用的是两个不同的 OutputFormat 值，互不冲突。
+    /// 2) 发请求时要用 HttpCompletionOption.ResponseHeadersRead，让
+    ///    SendAsync 一收到响应头就返回，不用等整个响应体（对于流式
+    ///    场景，说白了就是不知道要等多久）下载完才继续往下走——默认的
+    ///    HttpCompletionOption.ResponseContentRead 会等整个 body 收完，
+    ///    那样跟 SynthesizeAsync 的老实等待就没区别了，加了流式格式
+    ///    也是白搭。
+    /// 3) 读响应体不再用一次性的 ReadAsByteArrayAsync，而是拿到
+    ///    Stream 之后循环读固定大小的缓冲区，读到多少就 yield return
+    ///    多少——因为已经是裸 PCM，读到的字节可以直接扔给播放缓冲区，
+    ///    不需要像处理 riff 格式那样解析/跳过容器头。
+    /// 语言/音色选择、情绪转 Azure style 这些逻辑，跟 SynthesizeAsync
+    /// 完全一样，直接复用 BuildSsml，没有另外写一份。</summary>
+    public bool SupportsStreaming => true;
+
+    /// <summary>对应 raw-24khz-16bit-mono-pcm 这个格式本身规定的采样率/
+    /// 声道数/位深——这三个数字不是随便填的，是这个具体输出格式名字
+    /// 里已经写明的参数，如果以后哪天换了别的采样率的 raw 格式，这里
+    /// 要跟着改，两边必须完全对应，播放缓冲区才不会因为参数不匹配而
+    /// 放出噪音或者变速变调。</summary>
+    public (int SampleRate, int Channels, int BitsPerSample) StreamingAudioFormat => (24000, 1, 16);
+
+    public async IAsyncEnumerable<byte[]> SynthesizeStreamingAsync(
+        string text, string language, string emotion,
+        float[]? liveEmotionAudio = null, int liveEmotionSampleRate = 0)
+    {
+        var settings = _settingsService.Current;
+
+        if (string.IsNullOrWhiteSpace(settings.TTSApiRegion) || string.IsNullOrWhiteSpace(settings.TTSApiKey))
+        {
+            throw new InvalidOperationException(
+                "Azure 语音合成未配置完整。请在首页填写区域和 API Key。");
+        }
+
+        var voiceName = language switch
+        {
+            "zh" => settings.TTSApiVoiceZh,
+            "en" => settings.TTSApiVoiceEn,
+            _ => throw new InvalidOperationException($"Azure 语音合成暂不支持语言代码: {language}"),
+        };
+
+        if (string.IsNullOrWhiteSpace(voiceName))
+        {
+            throw new InvalidOperationException(
+                $"还没有给\"{language}\"这个语言选择 Azure 音色，请在首页选择对应的音色。");
+        }
+
+        var ssml = BuildSsml(text, voiceName, settings.TTSEmotionFollowEnabled ? emotion : null);
+
+        var url = $"https://{settings.TTSApiRegion}.tts.speech.microsoft.com/cognitiveservices/v1";
+        using var httpRequest = new HttpRequestMessage(HttpMethod.Post, url)
+        {
+            Content = new StringContent(ssml),
+        };
+        httpRequest.Content.Headers.ContentType = new MediaTypeHeaderValue("application/ssml+xml");
+        httpRequest.Headers.Add("Ocp-Apim-Subscription-Key", settings.TTSApiKey);
+        // 唯一跟 SynthesizeAsync 不一样的请求头——裸 PCM 而不是 WAV 容器，
+        // 理由见上面类方法的注释。
+        httpRequest.Headers.Add("X-Microsoft-OutputFormat", "raw-24khz-16bit-mono-pcm");
+        httpRequest.Headers.UserAgent.Add(new ProductInfoHeaderValue("Sonvert", "1.0"));
+
+        var stopwatch = Stopwatch.StartNew();
+        HttpResponseMessage response;
+        try
+        {
+            // ResponseHeadersRead 是这条路径能不能真正流式的关键——
+            // 不加这个参数，SendAsync 会跟 SynthesizeAsync 一样傻等整个
+            // 响应体下载完才返回，后面读流的代码就变得毫无意义。
+            response = await _httpClient.SendAsync(httpRequest, HttpCompletionOption.ResponseHeadersRead);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        {
+            // 理由同 SynthesizeAsync 那边的同款修改——把 InnerException
+            // 也带上，不然网络层的报错基本等于没打印有效信息。
+            var detail = ex.InnerException?.Message ?? ex.Message;
+            throw new InvalidOperationException($"调用 Azure 语音合成（流式）失败（网络层）: {ex.Message} | {detail}", ex);
+        }
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var body = await response.Content.ReadAsStringAsync();
+            throw new InvalidOperationException(
+                $"Azure 语音合成（流式）请求失败: [{(int)response.StatusCode}] {body}");
+        }
+
+        var isFirstChunk = true;
+        await using var stream = await response.Content.ReadAsStreamAsync();
+        // 4KB 是随手选的一个折中值：太小会让每次 yield 的开销（协程切换、
+        // 下游处理一次调用的固定成本）占比过高，太大又会让"边收边播"的
+        // 颗粒度变粗，失去流式本身的意义。后续如果实测发现首字节延迟
+        // 没有明显改善，这个数字是第一个可以调的旋钮。
+        var buffer = new byte[4096];
+        int bytesRead;
+        while ((bytesRead = await stream.ReadAsync(buffer)) > 0)
+        {
+            if (isFirstChunk)
+            {
+                Debug.WriteLine($"[AzureTts] voice={voiceName} streaming first chunk elapsed={stopwatch.ElapsedMilliseconds}ms");
+                isFirstChunk = false;
+            }
+
+            // 必须拷贝一份新数组再 yield——buffer 这个数组会在下一次循环
+            // 被 ReadAsync 复用覆盖，直接把 buffer 本身 yield 出去，下游
+            // 拿到的数据会在它还没处理完的时候就被写坏。
+            var chunk = new byte[bytesRead];
+            Array.Copy(buffer, chunk, bytesRead);
+            yield return chunk;
+        }
+
+        stopwatch.Stop();
+        Debug.WriteLine($"[AzureTts] voice={voiceName} streaming total elapsed={stopwatch.ElapsedMilliseconds}ms");
     }
 
     /// <summary>把 SenseVoice 的情绪标签映射成 Azure 支持的 style 值。
