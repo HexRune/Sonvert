@@ -24,4 +24,12 @@ public interface IDialogService
     /// <summary>弹出一个"确定/取消"的确认对话框，用于破坏性操作前的
     /// 二次确认。返回 true 表示用户点了确认。</summary>
     Task<bool> ShowConfirmationAsync(string title, string message, string confirmButtonText = "确定");
+
+    /// <summary>弹出系统的"打开文件"对话框，限定只能选 .json 文件，
+    /// 选中后直接把文件内容读成字符串返回——调用方（比如词典导入）
+    /// 不需要自己碰文件路径/流这些细节，也不需要引用
+    /// Avalonia.Platform.Storage，跟这个接口本身"ViewModel 不直接持有
+    /// Window/StorageProvider"的设计原则是一致的。用户取消选择、或者
+    /// 找不到宿主窗口（理论上不应该发生）时返回 null。</summary>
+    Task<string?> ShowOpenJsonFileAsync(string title);
 }

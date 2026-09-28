@@ -1,0 +1,166 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Sonvert.App.ViewModels"
+             xmlns:models="using:Sonvert.App.Models"
+             x:Class="Sonvert.App.Views.GlossaryView"
+             x:DataType="vm:GlossaryViewModel">
+
+  <UserControl.Styles>
+    <!--
+      ===== 视觉基调对齐首页/声音克隆页的风格 =====
+      这个页面是"设置"页原来那个扁平术语表拆出来独立成的一个页面——
+      左栏是词典列表（跟声音克隆页左栏的角色列表是同一个布局思路：
+      标题+新建按钮同一行，下面一个可选中的列表），右栏是选中词典的
+      词条编辑区。样式沿用项目里其他页面已经用过的几个类名
+      （SettingsCard/FieldLabel），每个页面各自维护一份，不抽共享文件，
+      跟 VoiceCloningView.axaml 顶部注释说的是同一个约定。
+    -->
+    <Style Selector="Border.SettingsCard">
+      <Setter Property="Background" Value="{StaticResource SurfaceBrush}" />
+      <Setter Property="BorderBrush" Value="{StaticResource CardBorderBrush}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="10" />
+      <Setter Property="Padding" Value="20" />
+    </Style>
+
+    <Style Selector="TextBlock.FieldLabel">
+      <Setter Property="FontSize" Value="13" />
+      <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
+      <Setter Property="Margin" Value="0,0,0,6" />
+    </Style>
+
+    <!-- 词典列表每一项：名称 + 词条数 + 启用开关 + 删除按钮排成一行。
+         选中态背景用 SurfaceBrightBrush，跟声音克隆页角色列表选中项
+         是同一个处理方式。 -->
+    <Style Selector="ListBoxItem">
+      <Setter Property="Padding" Value="10,8" />
+      <Setter Property="CornerRadius" Value="6" />
+    </Style>
+    <Style Selector="ListBoxItem:selected /template/ ContentPresenter">
+      <Setter Property="Background" Value="{StaticResource SurfaceBrightBrush}" />
+    </Style>
+  </UserControl.Styles>
+
+  <Grid RowDefinitions="Auto,*" Margin="24">
+
+    <TextBlock Grid.Row="0" Text="词典管理"
+               FontSize="25"
+               Foreground="{StaticResource TextSecondaryBrush}"
+               Margin="0,0,0,20" />
+
+    <Grid Grid.Row="1" ColumnDefinitions="260,*" ColumnSpacing="16">
+
+      <!-- ===== 左栏：词典列表 =====
+           只在这个页面做增删/导入，首页翻译卡那边只有一个"选择词典"
+           下拉框，单选这次翻译用哪一个（对应
+           AppSettings.ActiveGlossaryDictionaryId），不提供编辑入口——
+           两边分工见 GlossaryViewModel 类注释。 -->
+      <StackPanel Grid.Column="0" Spacing="8">
+
+        <Grid ColumnDefinitions="*,Auto">
+          <TextBlock Grid.Column="0" Text="词典列表" FontSize="18" FontWeight="Bold"
+                     Foreground="{StaticResource TextPrimaryBrush}"
+                     VerticalAlignment="Center" />
+        </Grid>
+
+        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
+          <TextBox Grid.Column="0" Text="{Binding NewDictionaryName}"
+                    Watermark="新词典名称，比如“英雄联盟”" />
+          <Button Grid.Column="1" Content="新建"
+                  Command="{Binding AddDictionaryCommand}" />
+        </Grid>
+
+        <Button Content="导入词典（JSON）"
+                Command="{Binding ImportDictionaryCommand}"
+                HorizontalAlignment="Stretch"
+                HorizontalContentAlignment="Center" />
+        <TextBlock Text="{Binding ImportStatusMessage}"
+                   IsVisible="{Binding ImportStatusMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                   Foreground="{StaticResource TextSecondaryBrush}"
+                   FontSize="12" TextWrapping="Wrap" />
+
+        <ListBox ItemsSource="{Binding Dictionaries}"
+                 SelectedItem="{Binding SelectedDictionary}"
+                 Background="Transparent"
+                 BorderThickness="0">
+          <ListBox.ItemTemplate>
+            <DataTemplate x:DataType="models:GlossaryDictionary">
+              <Grid ColumnDefinitions="*,Auto">
+                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                  <TextBlock Text="{Binding Name}"
+                             Foreground="{StaticResource TextPrimaryBrush}" />
+                  <TextBlock Text="{Binding Entries.Count, StringFormat={}{0} 条术语}"
+                             Foreground="{StaticResource TextSecondaryBrush}"
+                             FontSize="11" />
+                </StackPanel>
+                <Button Grid.Column="1" Content="删除"
+                        Command="{Binding $parent[ListBox].((vm:GlossaryViewModel)DataContext).DeleteDictionaryCommand}"
+                        CommandParameter="{Binding}"
+                        Background="{StaticResource DangerBrush}" Foreground="{StaticResource TextPrimaryBrush}"
+                        Padding="10,4" CornerRadius="6"
+                        Margin="6,0,0,0" />
+              </Grid>
+            </DataTemplate>
+          </ListBox.ItemTemplate>
+        </ListBox>
+      </StackPanel>
+
+      <!-- ===== 右栏：选中词典的词条编辑区 ===== -->
+      <Border Grid.Column="1" Classes="SettingsCard">
+        <Grid RowDefinitions="Auto,Auto,*">
+
+          <TextBlock Grid.Row="0"
+                     Text="{Binding SelectedDictionary.Name, StringFormat={}{0} 的术语}"
+                     IsVisible="{Binding SelectedDictionary, Converter={x:Static ObjectConverters.IsNotNull}}"
+                     FontSize="16" FontWeight="SemiBold"
+                     Foreground="{StaticResource TextPrimaryBrush}"
+                     Margin="0,0,0,14" />
+
+          <TextBlock Grid.Row="0"
+                     Text="左边新建或者选择一个词典，开始添加术语"
+                     IsVisible="{Binding SelectedDictionary, Converter={x:Static ObjectConverters.IsNull}}"
+                     Foreground="{StaticResource TextSecondaryBrush}" />
+
+          <!-- 新增一条术语——跟原来"设置"页那个术语表的输入行是同一个
+               交互，只是现在要指定加到哪个词典（SelectedDictionary），
+               这一层是 GlossaryViewModel.AddGlossaryEntryCommand 内部
+               处理的，界面上不用额外选。 -->
+          <Grid Grid.Row="1" ColumnDefinitions="*,*,Auto" ColumnSpacing="8"
+                IsVisible="{Binding SelectedDictionary, Converter={x:Static ObjectConverters.IsNotNull}}"
+                Margin="0,0,0,14">
+            <TextBox Grid.Column="0" Text="{Binding NewGlossarySourceTerm}" Watermark="原文术语" />
+            <TextBox Grid.Column="1" Text="{Binding NewGlossaryTargetTerm}" Watermark="目标译文" />
+            <Button Grid.Column="2" Content="添加" Command="{Binding AddGlossaryEntryCommand}" />
+          </Grid>
+
+          <ScrollViewer Grid.Row="2">
+            <ItemsControl ItemsSource="{Binding SelectedDictionaryEntries}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="models:GlossaryEntry">
+                  <Grid ColumnDefinitions="*,Auto,Auto" Margin="0,0,0,8">
+                    <TextBlock Grid.Column="0"
+                               Text="{Binding SourceTerm, StringFormat={}{0} →}"
+                               Foreground="{StaticResource TextPrimaryBrush}"
+                               VerticalAlignment="Center" />
+                    <TextBlock Grid.Column="1" Text="{Binding TargetTerm}"
+                               Foreground="{StaticResource TextPrimaryBrush}"
+                               VerticalAlignment="Center" Margin="6,0,0,0" />
+                    <Button Grid.Column="2" Content="删除"
+                            Command="{Binding $parent[ItemsControl].((vm:GlossaryViewModel)DataContext).DeleteGlossaryEntryCommand}"
+                            CommandParameter="{Binding}"
+                            Background="{StaticResource DangerBrush}" Foreground="{StaticResource TextPrimaryBrush}"
+                            Padding="10,4" CornerRadius="6"
+                            Margin="12,0,0,0" />
+                  </Grid>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </ScrollViewer>
+
+        </Grid>
+      </Border>
+
+    </Grid>
+
+  </Grid>
+</UserControl>

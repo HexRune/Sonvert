@@ -85,27 +85,55 @@ public class ApiTranslationService : ITranslationService
         // 第二步：术语表替换（跟 LocalTranslationService 逻辑完全一致）。
         // 保证不管走本地模型还是第三方 API，术语表这个功能的行为都一样，
         // 用户切换 Provider 时不会感知到术语替换"时有时无"。
-        var textToTranslate = text;
-        if (settings.GlossaryEnabled)
-        {
-            var glossary = await _glossaryRepository.GetAllAsync();
-            textToTranslate = GlossaryReplacer.Replace(text, glossary);
-        }
+        // ActiveGlossaryDictionaryId 为 null 就是首页下拉框选的"不使用
+        // 词典"，仓储层遇到 null 直接返回空列表，这里不用重复判断。
+        var glossary = await _glossaryRepository.GetEntriesForDictionaryAsync(settings.ActiveGlossaryDictionaryId);
+        var textToTranslate = GlossaryReplacer.Replace(text, glossary);
 
         // 第三步：组装 OpenAI 兼容协议的请求体。
-        // system 消息负责"定规矩"（角色设定+只输出译文的约束），
-        // user 消息就是要翻译的原文本身——这是最基础的两条消息结构，
-        // 没有做多轮上下文（不需要，每句字幕独立翻译）。
-        var systemPrompt = BuildSystemPrompt(sourceLanguage, targetLanguage);
-        var request = new ChatCompletionRequest
+        // 绝大多数服务商（DeepSeek/豆包等）：system 消息负责"定规矩"
+        // （角色设定+只输出译文的约束），user 消息就是要翻译的原文本身。
+        // Qwen-MT 系列是例外——阿里云文档明确要求 messages 有且仅有一条
+        // role=user 的消息，翻译方向通过下面的 translation_options 字段
+        // （而不是 system 提示词）来指定；带了 system 消息或者多余的
+        // messages，官方文档没有承诺行为，与其猜测不如老老实实按文档来。
+        // 靠 ModelId 是否以 "qwen-mt" 开头判断——这几个模型的命名
+        // （qwen-mt-turbo/qwen-mt-plus/qwen-mt-flash）本身就是稳定、
+        // 一望而知的标识，不需要在 TranslationApiKind 那个枚举上再加一档，
+        // 也不用碰 TranslationRouter 和设置项加载那一段已经比较绕的匹配
+        // 逻辑（那段逻辑上面的注释就提到过一次"误判"的坑，能不碰就不碰）。
+        var isQwenMt = settings.TranslationApiModel.StartsWith("qwen-mt", StringComparison.OrdinalIgnoreCase);
+
+        ChatCompletionRequest request;
+        if (isQwenMt)
         {
-            Model = settings.TranslationApiModel,
-            Messages = new List<ChatMessage>
+            request = new ChatCompletionRequest
             {
-                new() { Role = "system", Content = systemPrompt },
-                new() { Role = "user", Content = textToTranslate },
-            },
-        };
+                Model = settings.TranslationApiModel,
+                Messages = new List<ChatMessage>
+                {
+                    new() { Role = "user", Content = textToTranslate },
+                },
+                TranslationOptions = new TranslationOptions
+                {
+                    SourceLang = QwenMtLanguageName(sourceLanguage),
+                    TargetLang = QwenMtLanguageName(targetLanguage),
+                },
+            };
+        }
+        else
+        {
+            var systemPrompt = BuildSystemPrompt(sourceLanguage, targetLanguage);
+            request = new ChatCompletionRequest
+            {
+                Model = settings.TranslationApiModel,
+                Messages = new List<ChatMessage>
+                {
+                    new() { Role = "system", Content = systemPrompt },
+                    new() { Role = "user", Content = textToTranslate },
+                },
+            };
+        }
 
         // 第四步：拼 URL + 鉴权头。TrimEnd('/') 是防用户在设置里
         // 多打了一个结尾斜杠（比如填成 ".../v1/"），避免拼出 "v1//chat/completions"
@@ -186,6 +214,23 @@ public class ApiTranslationService : ITranslationService
         "zh" => "中文",
         "en" => "英文",
         _ => languageCode,
+    };
+
+    /// <summary>Qwen-MT 专属的语言名称映射——注意跟上面 LanguageDisplayName
+    /// 不是同一套：那个给普通大模型的 system 提示词用，返回的是中文名称
+    /// （"中文"/"英文"）；这个是 translation_options.source_lang/target_lang
+    /// 这两个结构化参数专用，阿里云文档要求填英文语言名（"Chinese"/
+    /// "English"），两者字面上完全不同，不能合并成一个函数共用。
+    /// source_lang 传入的语言代码在项目当前的语言选项里理论上不会出现
+    /// "无法识别"的情况（识别语言下拉框选项本来就是固定的 zh/en/auto），
+    /// 但还是给个 "auto" 兜底——Qwen-MT 本身就支持自动检测源语言，
+    /// 兜底成 auto 比报错更稳妥。</summary>
+    private static string QwenMtLanguageName(string languageCode) => languageCode switch
+    {
+        "zh" => "Chinese",
+        "en" => "English",
+        "auto" => "auto",
+        _ => "auto",
     };
 
     /// <summary>统一处理非 2xx 响应：优先按 OpenAI 兼容协议的错误体

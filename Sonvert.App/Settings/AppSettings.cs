@@ -17,10 +17,14 @@ public class AppSettings
     /// 这个值，删掉超期的记录。</summary>
     public int? HistoryRetentionDays { get; set; } = null;
 
-    /// <summary>是否启用翻译术语表——关闭后，翻译前不再做 GlossaryReplacer
-    /// 那步替换，即使术语表里配置了内容，也完全不生效，方便临时关闭这个
-    /// 功能而不用清空整个术语表。</summary>
-    public bool GlossaryEnabled { get; set; } = true;
+    /// <summary>这次翻译要用哪个词典——首页现在是"选择词典"下拉框，
+    /// 单选，不是"开/关+勾选多个"那一套了。null 就是下拉框里的"不使用
+    /// 词典"选项，翻译前完全跳过 GlossaryReplacer 那一步；有值就是
+    /// 具体某个 GlossaryDictionary.Id，翻译前只用这一个词典下的词条。
+    /// 取代了原来的 GlossaryEnabled（那个是全局开关+词典各自的
+    /// IsEnabled 多选，现在简化成单选，一个字段就够表达清楚状态，
+    /// 不需要两层开关叠加）。</summary>
+    public int? ActiveGlossaryDictionaryId { get; set; } = null;
 
     /// <summary>是否要把翻译结果合成语音并播放——关闭后，识别和翻译照常
     /// 进行（字幕/文字记录不受影响），只是跳过 TTS 合成和播放这两步。

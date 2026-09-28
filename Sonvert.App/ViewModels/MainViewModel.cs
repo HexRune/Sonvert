@@ -22,6 +22,7 @@ public partial class MainViewModel : ViewModelBase
     private readonly HomeViewModel _homeViewModel;
     private readonly VoiceCloningViewModel _voiceCloningViewModel;
     private readonly AboutViewModel _aboutViewModel;
+    private readonly GlossaryViewModel _glossaryViewModel;
 
     private readonly HistoryViewModel _historyViewModel;
 
@@ -34,6 +35,16 @@ public partial class MainViewModel : ViewModelBase
     {
         new NavItem { Title = "主页", IconGlyph = "\uE80F" },
         new NavItem { Title = "实时翻译", IconGlyph = "\uE720" },
+        // 图标选的是 Segoe MDL2 Assets 里的 List（\uE8A5）——没有找到语义上
+        // 更贴切的"词典/书"符号，跟其他几个图标一样属于"能表意就行"的
+        // 选择，如果实际渲染出来观感不理想，换个码位就行，不影响功能。
+        // 图标换成 Library（\uE1D3）——原来用的 List（\uE8A5）是纯粹的
+        // "列表"符号，跟"词典"这个概念的语义关联很弱；Library 是 Segoe
+        // MDL2 Assets 里专门表示"一摞书/图书馆"的符号，更贴近"词典"给人
+        // 的直觉联想。这个码位我没法在这个环境里实际渲染出来确认效果，
+        // 如果实际显示出来不理想或者图标本身不对，换个码位就行，不影响
+        // 功能——图标只是纯展示，不参与任何业务逻辑判断。
+        new NavItem { Title = "词典管理", IconGlyph = "\uE1D3" },
         new NavItem { Title = "声音克隆", IconGlyph = "\uE77B" },
         new NavItem { Title = "发声角色", IconGlyph = "\uE716" },
         new NavItem { Title = "历史记录", IconGlyph = "\uE81C" },
@@ -76,6 +87,7 @@ public partial class MainViewModel : ViewModelBase
         HomeViewModel homeViewModel,
         VoiceCloningViewModel voiceCloningViewModel,
         AboutViewModel aboutViewModel,
+        GlossaryViewModel glossaryViewModel,
         HistoryViewModel historyViewModel)
     {
         _liveTranslationViewModel = liveTranslationViewModel;
@@ -83,6 +95,7 @@ public partial class MainViewModel : ViewModelBase
         _homeViewModel = homeViewModel;
         _voiceCloningViewModel = voiceCloningViewModel;
         _aboutViewModel = aboutViewModel;
+        _glossaryViewModel = glossaryViewModel;
 
         _homeViewModel.StartTranslationRequested += OnStartTranslationRequested;
 
@@ -122,10 +135,21 @@ public partial class MainViewModel : ViewModelBase
             "设置" => _settingsViewModel,
             "实时翻译" => _liveTranslationViewModel,
             "声音克隆" => _voiceCloningViewModel,
+            "词典管理" => RefreshAndGetGlossaryViewModel(),
             "关于" => _aboutViewModel,
             "历史记录" => RefreshAndGetHistoryViewModel(),
             _ => null, // 其他页面还没搭，先显示占位
         };
+    }
+
+    // 每次切进"词典管理"页面都重新拉一次最新数据——理由跟历史记录页
+    // RefreshAndGetHistoryViewModel 是一样的，词典数据可能在上一次
+    // 离开这个页面之后又发生变化（虽然目前只有这个页面自己会改，
+    // 但刷新一次成本很低，比指望内存缓存一直是最新的更省心）。
+    private GlossaryViewModel RefreshAndGetGlossaryViewModel()
+    {
+        _ = _glossaryViewModel.RefreshAsync();
+        return _glossaryViewModel;
     }
     private HistoryViewModel RefreshAndGetHistoryViewModel()
     {
@@ -135,6 +159,7 @@ public partial class MainViewModel : ViewModelBase
     private HomeViewModel RefreshAndGetHomeViewModel()
     {
         _ = _homeViewModel.RefreshCharactersAsync();
+        _ = _homeViewModel.RefreshGlossaryDictionariesAsync();
         return _homeViewModel;
     }
 

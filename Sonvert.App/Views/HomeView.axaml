@@ -552,10 +552,23 @@
                    是 ToggleSwitch，语音合成卡对应位置放的是 ComboBox，
                    两种控件本身的默认高度不完全一样，固定高度之后才能
                    保证不管放哪种控件，这一行占的空间都相同。 -->
+              <!-- "选择词典"——原来是"启用术语表"开关+下面一份可以
+                   多选的词典勾选清单，现在简化成一个下拉框：第一项
+                   "不使用词典"就是原来"关掉开关"那个状态，后面跟着
+                   "词典管理"页面里建好的所有词典，单选一个。新建/删除
+                   词典、增删词条这些编辑操作都在独立的"词典管理"页面
+                   完成（左侧导航），这里只负责"当次翻译用哪一个"。 -->
               <Grid Classes="FieldRow" ColumnDefinitions="*,Auto" Height="34">
-                <TextBlock Grid.Column="0" Classes="FieldLabel" Text="启用术语表" VerticalAlignment="Center" />
-                <ToggleSwitch Grid.Column="1" IsChecked="{Binding GlossaryEnabled}"
-                              OnContent="{x:Null}" OffContent="{x:Null}" />
+                <TextBlock Grid.Column="0" Classes="FieldLabel" Text="选择词典" VerticalAlignment="Center" />
+                <ComboBox Grid.Column="1" Width="200"
+                          ItemsSource="{Binding GlossaryDictionaries}"
+                          SelectedItem="{Binding SelectedGlossaryDictionary}">
+                  <ComboBox.ItemTemplate>
+                    <DataTemplate x:DataType="models:GlossaryDictionary">
+                      <TextBlock Text="{Binding Name}" />
+                    </DataTemplate>
+                  </ComboBox.ItemTemplate>
+                </ComboBox>
               </Grid>
 
               <!-- ===== 翻译提供方：浏览器式标签页 =====
@@ -603,6 +616,23 @@
                           </DataTemplate>
                         </ComboBox.ItemTemplate>
                       </ComboBox>
+                    </StackPanel>
+
+                    <!-- 接口地址：只有 OpenAI 兼容协议的服务商才需要（Azure
+                         走的是"区域"拼出固定域名，不需要自由填地址）。
+                         之前这个字段只能在"设置"页面改，首页选了预设
+                         服务商之后地址会被预设默认值覆盖（比如切换到
+                         Qwen-MT-Flash 会自动填成官方默认网关），如果
+                         账号用的是专属工作空间网关（不是默认地址），
+                         得去"设置"页面另外改——两个地方分别管理容易
+                         漏改、也容易被下拉框的默认填充覆盖回去。加到
+                         首页这里，跟服务商选择放在一起，改起来直接明了，
+                         也不容易再发生"设置页改了、首页选服务商又给
+                         悄悄改回默认值"这种互相覆盖的问题。 -->
+                    <StackPanel IsVisible="{Binding !IsAzureTranslationSelected}">
+                      <TextBlock Classes="FieldLabel" Text="接口地址" />
+                      <TextBox Text="{Binding TranslationApiEndpoint}"
+                               PlaceholderText="例如 https://api.deepseek.com/v1" />
                     </StackPanel>
 
                     <!-- 区域：只有选中 Azure 翻译时才显示，DeepSeek/豆包

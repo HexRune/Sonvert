@@ -1,6 +1,9 @@
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
+using Avalonia.Platform.Storage;
 using Sonvert.App.Views;
+using System.Collections.Generic;
+using System.IO;
 using System.Threading.Tasks;
 
 namespace Sonvert.App.Services.Dialogs;
@@ -54,5 +57,29 @@ public class DialogService : IDialogService
         dialog.Closed += (_, _) => tcs.TrySetResult(default!);
         dialog.Show();
         return tcs.Task;
+    }
+
+    public async Task<string?> ShowOpenJsonFileAsync(string title)
+    {
+        var owner = GetOwnerWindow();
+        if (owner is null) return null;
+
+        var files = await owner.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = title,
+            AllowMultiple = false,
+            FileTypeFilter = new List<FilePickerFileType>
+            {
+                new("JSON 文件") { Patterns = new List<string> { "*.json" } },
+            },
+        });
+
+        if (files.Count == 0) return null;
+
+        // 直接读成字符串返回——调用方（GlossaryRepository.ImportFromJsonAsync）
+        // 要的就是文件的文本内容，不需要额外经手一次字节数组再转字符串。
+        await using var stream = await files[0].OpenReadAsync();
+        using var reader = new StreamReader(stream);
+        return await reader.ReadToEndAsync();
     }
 }

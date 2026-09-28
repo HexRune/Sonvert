@@ -109,6 +109,7 @@ public partial class HomeViewModel : ViewModelBase
     private bool _subtitleEnabled;
     private readonly ISettingsService _settingsService;
     private readonly ICharacterRepository _characterRepository;
+    private readonly Sonvert.App.Services.Translation.IGlossaryRepository _glossaryRepository;
     private readonly LiveTranslationViewModel _liveTranslationViewModel;
 
     // ---- 会话运行状态（驱动四张卡片标题旁的状态点）----
@@ -223,9 +224,9 @@ public partial class HomeViewModel : ViewModelBase
 
     // ---- 翻译板块 ----
     [ObservableProperty] private string _targetLanguage;
-    [ObservableProperty] private bool _glossaryEnabled;
     [ObservableProperty] private string _translationProvider;
     [ObservableProperty] private string _translationApiKey;
+    [ObservableProperty] private string _translationApiEndpoint;
     [ObservableProperty] private TranslationModelOption? _selectedTranslationModel;
 
     /// <summary>API Key 输入框当前是否是"明文可见"状态——纯 UI 临时状态，
@@ -285,6 +286,21 @@ public partial class HomeViewModel : ViewModelBase
             DisplayName = "豆包（火山方舟）",
             ModelId = "", // 需要用户在"设置"页面填自己的 Endpoint ID，见类注释
             Endpoint = "https://ark.cn-beijing.volces.com/api/v3",
+            Kind = TranslationApiKind.OpenAiCompatible,
+        },
+        // Qwen-MT-Flash：阿里云的翻译专用大模型，跟 DeepSeek/豆包一样走
+        // OpenAI 兼容协议（同一个 Kind），但请求体形状不一样——只发一条
+        // user 消息 + 一个 translation_options 字段指定翻译方向，不用
+        // system 提示词。这个差异在 ApiTranslationService 里靠 ModelId
+        // 是否以 "qwen-mt" 开头判断并分支处理，Kind 这里不用跟着加新值，
+        // 见那边的注释。Endpoint 填的是国际版网关地址（dashscope-intl），
+        // 如果账号开的是国内百炼工作空间，需要去"设置"页面换成自己
+        // 工作空间的地址。
+        new TranslationModelOption
+        {
+            DisplayName = "通义千问 MT (Qwen-MT-Flash)",
+            ModelId = "qwen-mt-flash",
+            Endpoint = "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
             Kind = TranslationApiKind.OpenAiCompatible,
         },
         new TranslationModelOption
@@ -397,6 +413,21 @@ public partial class HomeViewModel : ViewModelBase
 
     public ObservableCollection<Character> Characters { get; } = new();
 
+    /// <summary>首页翻译卡"选择词典"下拉框的选项——第一项是一个 Id=0
+    /// 的哨兵对象（Name="不使用词典"），后面跟着"词典管理"页面里建好
+    /// 的所有真实词典，这个列表本身在这里是只读展示，编辑（新建/删除
+    /// 词典、增删词条、导入）都在独立的"词典管理"页面完成，见
+    /// GlossaryViewModel 类注释里两边分工的说明。用 Id=0 当"不使用
+    /// 词典"的哨兵值是安全的——真实词典的 Id 是数据库自增主键，从 1
+    /// 开始，不会跟 0 冲突。</summary>
+    public ObservableCollection<GlossaryDictionary> GlossaryDictionaries { get; } = new();
+
+    /// <summary>下拉框当前选中项——变化时把选中结果写进
+    /// AppSettings.ActiveGlossaryDictionaryId（Id=0 的哨兵项存成
+    /// null，代表"不使用词典"），见 OnSelectedGlossaryDictionaryChanged。</summary>
+    [ObservableProperty]
+    private GlossaryDictionary? _selectedGlossaryDictionary;
+
     /// <summary>TTS API 服务商预设——"跳跃语音/火山引擎"仍然是占位
     /// （ApiTtsService 调用会抛 NotImplementedException），"Azure 语音
     /// 合成"是真正实现了的（AzureTtsService）。</summary>
@@ -475,11 +506,13 @@ public partial class HomeViewModel : ViewModelBase
     public HomeViewModel(ISettingsService settingsService, 
         ICharacterRepository characterRepository,
         ISubtitleWindowService subtitleWindowService,
+        Sonvert.App.Services.Translation.IGlossaryRepository glossaryRepository,
         LiveTranslationViewModel liveTranslationViewModel)
     {
         _settingsService = settingsService;
         _characterRepository = characterRepository;
         _subtitleWindowService = subtitleWindowService;
+        _glossaryRepository = glossaryRepository;
         _liveTranslationViewModel = liveTranslationViewModel;
 
         _subtitleEnabled = settingsService.Current.SubtitleEnabled;
@@ -508,9 +541,14 @@ public partial class HomeViewModel : ViewModelBase
         _enableSecondInputSource = s.EnableSecondInputSource;
         _targetLanguage2 = s.TargetLanguage2;
         _recognitionLanguage2 = s.RecognitionLanguage2;
-        _glossaryEnabled = s.GlossaryEnabled;
+        // ActiveGlossaryDictionaryId 不在这里同步初始化——它对应的是
+        // SelectedGlossaryDictionary 这个下拉框选中项，要等
+        // RefreshGlossaryDictionariesAsync 把词典列表（含"不使用词典"
+        // 这个哨兵项）异步加载回来之后才能按 Id 找到对应的那一项去选中，
+        // 构造函数这个同步阶段还没有词典列表可选，没法提前赋值。
         _translationProvider = s.TranslationProvider;
         _translationApiKey = s.TranslationApiKey;
+        _translationApiEndpoint = s.TranslationApiEndpoint;
         _translationApiRegion = s.TranslationApiRegion;
         _ttsProvider = s.TTSProvider;
         _ttsLocalEngine = s.TTSLocalEngine;
@@ -595,6 +633,7 @@ public partial class HomeViewModel : ViewModelBase
         }
 
         _ = RefreshCharactersAsync();
+        _ = RefreshGlossaryDictionariesAsync();
     }
 
     /// <summary>启动（或者切换设备时重启）麦克风迷你电平表专用的那路
@@ -813,6 +852,38 @@ public partial class HomeViewModel : ViewModelBase
         SelectedCharacter = Characters.FirstOrDefault(c => c.Id == currentActiveId);
     }
 
+    public async Task RefreshGlossaryDictionariesAsync()
+    {
+        var currentActiveId = _settingsService.Current.ActiveGlossaryDictionaryId;
+
+        GlossaryDictionaries.Clear();
+        // 哨兵项永远排在第一位，Id=0——"不使用词典"这个选项跟真实词典
+        // 用的是同一个类型/同一个列表，不用另外为"下拉框选项"专门包一层
+        // 类型，ComboBox 绑定和显示逻辑都能直接复用 GlossaryDictionary.Name。
+        GlossaryDictionaries.Add(new GlossaryDictionary { Id = 0, Name = "不使用词典" });
+        foreach (var dictionary in await _glossaryRepository.GetDictionariesAsync())
+        {
+            GlossaryDictionaries.Add(dictionary);
+        }
+
+        // 按 Id 找回刷新前选中的那一项——currentActiveId 是 null 就对应
+        // 哨兵项（Id=0），如果之前选中的词典在这次刷新里已经被删掉了
+        // （比如在"词典管理"页面删除了它），FirstOrDefault 找不到会
+        // 退回哨兵项，等同于自动回落到"不使用词典"，不会引用一个已经
+        // 不存在的词典 Id。
+        SelectedGlossaryDictionary = GlossaryDictionaries
+            .FirstOrDefault(d => d.Id == (currentActiveId ?? 0));
+    }
+
+    partial void OnSelectedGlossaryDictionaryChanged(GlossaryDictionary? value)
+    {
+        // Id=0 是哨兵项"不使用词典"，存进设置时要还原成 null——
+        // AppSettings.ActiveGlossaryDictionaryId 的 null 就是"不使用
+        // 词典"这个语义，0 不是一个真实存在过的词典 Id，两者要对应上。
+        _settingsService.Current.ActiveGlossaryDictionaryId = value?.Id is null or 0 ? null : value.Id;
+        _ = _settingsService.SaveAsync();
+    }
+
     partial void OnRecognitionLanguageChanged(string value)
     {
         _settingsService.Current.RecognitionLanguage = value;
@@ -833,12 +904,6 @@ public partial class HomeViewModel : ViewModelBase
         _ = _settingsService.SaveAsync();
     }
 
-    partial void OnGlossaryEnabledChanged(bool value)
-    {
-        _settingsService.Current.GlossaryEnabled = value;
-        _ = _settingsService.SaveAsync();
-    }
-
     partial void OnTranslationProviderChanged(string value)
     {
         _settingsService.Current.TranslationProvider = value;
@@ -851,6 +916,15 @@ public partial class HomeViewModel : ViewModelBase
     partial void OnTranslationApiKeyChanged(string value)
     {
         _settingsService.Current.TranslationApiKey = value;
+        _ = _settingsService.SaveAsync();
+    }
+
+    /// <summary>首页直接编辑接口地址——跟 OnSelectedTranslationModelChanged
+    /// 那个 bug 修复是配套的：既然首页现在可以直接改这个字段，就更没有
+    /// 理由再让"切换服务商下拉框"这个操作去覆盖用户手动填的值了。</summary>
+    partial void OnTranslationApiEndpointChanged(string value)
+    {
+        _settingsService.Current.TranslationApiEndpoint = value;
         _ = _settingsService.SaveAsync();
     }
 
@@ -872,8 +946,30 @@ public partial class HomeViewModel : ViewModelBase
     partial void OnSelectedTranslationModelChanged(TranslationModelOption? value)
     {
         if (value is null) return;
+
+        // 真正的 bug 现场：这个方法之前不管三七二十一，只要下拉框选中项
+        // 发生"变化"这个事件触发了，就会把 TranslationApiEndpoint 直接
+        // 覆盖成 value.Endpoint（预设里写死的默认地址）。用户在"设置"页
+        // 手动填了自己工作空间的自定义地址、存盘之后，只要这个下拉框
+        // 再触发一次变化事件（哪怕只是切换到别的服务商又切回来），
+        // 自定义地址就会被无声无息地打回预设默认值——这正是"Qwen-MT
+        // 一直 401"这个问题的真正原因，跟网络、Key 本身都无关。
+        // 修复方式：只有在"真的换了一个不同的模型"时才用预设默认值去
+        // 填空，如果 ModelId 跟当前已保存的一致（说明只是重新选中了
+        // 同一个、用户可能已经自定义过地址的服务商），就不要覆盖
+        // TranslationApiEndpoint，保留用户已经填好的自定义值。
+        var isSwitchingToDifferentModel = value.ModelId != _settingsService.Current.TranslationApiModel;
+
         _settingsService.Current.TranslationApiModel = value.ModelId;
-        _settingsService.Current.TranslationApiEndpoint = value.Endpoint;
+        if (isSwitchingToDifferentModel)
+        {
+            // 走属性 setter（而不是直接改 _settingsService.Current 那个
+            // 字段）——这样会连带触发 OnTranslationApiEndpointChanged，
+            // 首页那个新加的"接口地址"文本框才会跟着刷新显示新值，
+            // 不会出现"设置已经变了、但文本框还显示旧地址"这种两边
+            // 不同步的情况。
+            TranslationApiEndpoint = value.Endpoint;
+        }
         _settingsService.Current.TranslationApiKind =
             value.Kind == TranslationApiKind.Azure ? "azure" : "openai_compatible";
         _ = _settingsService.SaveAsync();

@@ -133,13 +133,12 @@ public class LocalTranslationService : ITranslationService, IAsyncDisposable
     public async Task<TranslationResult> TranslateAsync(
         string text, string sourceLanguage, string targetLanguage)
     {
-        var textToTranslate = text;
-  
-        if (_settingsService.Current.GlossaryEnabled)
-        {
-            var glossary = await _glossaryRepository.GetAllAsync();
-            textToTranslate = GlossaryReplacer.Replace(text, glossary);
-        }
+        // ActiveGlossaryDictionaryId 为 null 就是首页下拉框选的"不使用
+        // 词典"，仓储层遇到 null 直接返回空列表，这里不用重复判断。
+        var glossary = await _glossaryRepository.GetEntriesForDictionaryAsync(
+            _settingsService.Current.ActiveGlossaryDictionaryId);
+        var textToTranslate = GlossaryReplacer.Replace(text, glossary);
+
         var request = new TranslateRequest
         {
             Text = textToTranslate,

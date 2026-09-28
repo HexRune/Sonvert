@@ -69,13 +69,11 @@ public class AzureTranslationService : ITranslationService
         }
 
         // 术语表替换逻辑跟 ApiTranslationService 保持一致，保证不管走
-        // 哪个 Provider，术语表这个功能的行为都一样。
-        var textToTranslate = text;
-        if (settings.GlossaryEnabled)
-        {
-            var glossary = await _glossaryRepository.GetAllAsync();
-            textToTranslate = GlossaryReplacer.Replace(text, glossary);
-        }
+        // 哪个 Provider，术语表这个功能的行为都一样。ActiveGlossaryDictionaryId
+        // 为 null 就是首页下拉框选的"不使用词典"，仓储层遇到 null 直接
+        // 返回空列表，这里不用重复判断。
+        var glossary = await _glossaryRepository.GetEntriesForDictionaryAsync(settings.ActiveGlossaryDictionaryId);
+        var textToTranslate = GlossaryReplacer.Replace(text, glossary);
 
         var azureSource = ToAzureLanguageCode(sourceLanguage);
         var azureTarget = ToAzureLanguageCode(targetLanguage);

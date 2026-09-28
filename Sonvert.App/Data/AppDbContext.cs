@@ -24,6 +24,7 @@ public class AppDbContext : DbContext
     public DbSet<CharacterEmotionClip> CharacterEmotionClips => Set<CharacterEmotionClip>();
     public DbSet<HistoryEntry> HistoryEntries => Set<HistoryEntry>();
     public DbSet<GlossaryEntry> GlossaryEntries => Set<GlossaryEntry>();
+    public DbSet<GlossaryDictionary> GlossaryDictionaries => Set<GlossaryDictionary>();
 
     public static string AppDataRoot { get; } = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Sonvert");
@@ -47,6 +48,15 @@ public class AppDbContext : DbContext
             .HasMany(c => c.EmotionClips)
             .WithOne(clip => clip.Character)
             .HasForeignKey(clip => clip.CharacterId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // 词典/词条是同一种"一对多、删父带删子"的关系，跟上面
+        // Character/CharacterEmotionClip 完全一样的处理方式——删掉一个
+        // 词典，它名下的词条没有单独存在的意义，级联删掉，不留孤儿数据。
+        modelBuilder.Entity<GlossaryDictionary>()
+            .HasMany(d => d.Entries)
+            .WithOne(e => e.Dictionary)
+            .HasForeignKey(e => e.DictionaryId)
             .OnDelete(DeleteBehavior.Cascade);
 
         // 历史记录经常按"某一天"这个条件查询/删除，给 Timestamp 加个索引，

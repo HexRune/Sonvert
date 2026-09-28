@@ -56,7 +56,10 @@ public class ChatCompletionRequest
     public string Model { get; set; } = string.Empty;
 
     /// <summary>对话消息列表。本项目场景固定是两条：一条 system（角色设定+
-    /// 输出格式约束）+ 一条 user（待翻译原文），不维护多轮历史。</summary>
+    /// 输出格式约束）+ 一条 user（待翻译原文），不维护多轮历史。
+    /// 例外：Qwen-MT 系列模型要求这里有且仅有一条 role=user 的消息，
+    /// 不能带 system——见 ApiTranslationService 里对 Qwen-MT 的特殊
+    /// 处理和 TranslationOptions 字段的注释。</summary>
     [JsonPropertyName("messages")]
     public List<ChatMessage> Messages { get; set; } = new();
 
@@ -64,6 +67,32 @@ public class ChatCompletionRequest
     /// 后续如果需要可以挪到设置里做成可调参数。</summary>
     [JsonPropertyName("temperature")]
     public double Temperature { get; set; } = 0.3;
+
+    /// <summary>Qwen-MT 专属、非标准 OpenAI 字段——阿里云文档管这个叫
+    /// "extra_body"（Python SDK 里通过 extra_body 参数传，本质就是请求体
+    /// 顶层多一个 translation_options 字段），跟 messages/temperature是
+    /// 平级字段，不是嵌在 messages 里面。DeepSeek/豆包这些普通 OpenAI
+    /// 兼容服务商不认识这个字段，所以留空(null)时必须完全不出现在
+    /// 序列化后的 JSON 里——加了 JsonIgnore(WhenWritingNull)，普通服务商
+    /// 收到的请求体跟没加这个字段之前完全一样，不会因为多出一个未知字段
+    /// 而报错或者被忽略式地静默出问题。</summary>
+    [JsonPropertyName("translation_options")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public TranslationOptions? TranslationOptions { get; set; }
+}
+
+/// <summary>Qwen-MT 的翻译方向参数——source_lang/target_lang 这里要填
+/// 完整的英文语言名称（"Chinese"/"English"），不是 "zh"/"en" 这种两字母
+/// 代码，也不是中文名称（"中文"/"英文"）。这是阿里云文档给的固定格式，
+/// 跟项目里给 DeepSeek/豆包用的 BuildSystemPrompt 那套中文语言名完全
+/// 是两回事，不能共用同一个映射函数。</summary>
+public class TranslationOptions
+{
+    [JsonPropertyName("source_lang")]
+    public string SourceLang { get; set; } = "auto";
+
+    [JsonPropertyName("target_lang")]
+    public string TargetLang { get; set; } = string.Empty;
 }
 
 /// <summary>单条对话消息，Role 取值遵循 OpenAI 约定："system"/"user"/"assistant"。</summary>

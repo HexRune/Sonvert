@@ -143,6 +143,14 @@ public class RecognitionSessionService : IRecognitionSessionService
         vadConfig.Provider = "cpu";
         vadConfig.Debug = 0;
 
+        // === 新增：边界与灵敏度参数 ===
+        vadConfig.SileroVad.Threshold = 0.35f;          // 默认 0.5，降低让起始轻音更敏感
+        vadConfig.SileroVad.MinSpeechDuration = 0.15f;   // 默认 0.25s，短指令也能被捕获
+        vadConfig.SileroVad.MinSilenceDuration = 0.35f;  // 默认 0.5s，减少句子被过早切断
+        vadConfig.SileroVad.MaxSpeechDuration = 15f;     // 单句上限，防止长句被无限拼接
+        //vadConfig.SileroVad.
+       
+
         // 缓冲区大小(秒)，跟旧代码保持一致：30 秒对直播场景单句话长度足够宽裕。
         _vad = new VoiceActivityDetector(vadConfig, 30f);
 
